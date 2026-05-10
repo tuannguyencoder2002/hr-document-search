@@ -1,0 +1,77 @@
+"""Application configuration loaded from environment variables / .env."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Settings(BaseSettings):
+    """Runtime configuration. Values can be overridden via environment / .env."""
+
+    model_config = SettingsConfigDict(
+        env_file=str(PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # Qdrant
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "hr_documents"
+    qdrant_dense_name: str = "dense"
+    qdrant_sparse_name: str = "sparse"
+    qdrant_dense_size: int = 1024
+
+    # Ollama
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
+
+    # Models
+    embedding_model: str = "BAAI/bge-m3"
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+
+    # Chunking
+    chunk_size: int = 512
+    chunk_overlap: int = 128
+
+    # Search
+    top_k_retrieve: int = 30
+    top_k_rerank: int = 5
+    rrf_k: int = 60
+
+    # API
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
+    # LLM generation
+    llm_temperature: float = 0.2
+    llm_top_p: float = 0.9
+    llm_max_tokens: int = 1024
+
+    # Data
+    data_dir: Path = Field(default=PROJECT_ROOT / "data" / "hr_docs")
+
+    # Device
+    device: str = "auto"  # "auto" | "cuda" | "cpu"
+
+    def resolved_device(self) -> str:
+        if self.device != "auto":
+            return self.device
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Singleton accessor for settings."""
+    return Settings()

@@ -1,0 +1,20 @@
+[
+  {
+    "question": "Nhân viên được nghỉ phép bao nhiêu ngày mỗi năm?",
+    "expected_answer_contains": ["12"],
+    "expected_source": "01_so_tay_nhan_vien_2024.pdf",
+    "expected_page": 12
+  },
+  {
+    "question": "Lương thử việc bằng bao nhiêu phần trăm lương chính thức?",
+    "expected_answer_contains": ["85"],
+    "expected_source": "03_quy_che_luong_thuong.docx",
+    "expected_page": 5
+  },
+  {
+    "question": "Tần suất làm việc từ xa tối đa mỗi tuần là bao nhiêu?",
+    "expected_answer_contains": ["2 ngày", "hai ngày"],
+    "expected_source": "06_chinh_sach_wfh.docx",
+    "expected_page": 2
+  }
+]
