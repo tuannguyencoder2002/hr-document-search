@@ -1,6 +1,6 @@
 "use client";
 
-import { X, ExternalLink, FileText, FileType2, Loader2 } from "lucide-react";
+import { X, ExternalLink, FileText, FileType2, Loader2, FolderOpen } from "lucide-react";
 import { useState } from "react";
 import type { Source } from "@/lib/types";
 import { previewUrlFor } from "@/lib/chat-client";
@@ -63,6 +63,21 @@ export function DocCard({ index, source, onClose }: Props) {
             >
               <ExternalLink className="h-4 w-4" />
             </a>
+          ) : null}
+          {source.source_path ? (
+            <button
+              type="button"
+              onClick={() => {
+                fetch(`http://localhost:8000/open-file?path=${encodeURIComponent(source.source_path!)}`)
+                  .then((r) => { if (!r.ok) console.warn("[DS] open-file failed:", r.status); })
+                  .catch((e) => console.warn("[DS] open-file error:", e));
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              title="Mở file gốc trên máy"
+              aria-label="Mở file gốc trên máy"
+            >
+              <FolderOpen className="h-4 w-4" />
+            </button>
           ) : null}
           <button
             type="button"

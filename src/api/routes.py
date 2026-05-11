@@ -649,6 +649,57 @@ async def image_search(
     }
 
 
+@router.get("/open-file")
+def open_file_locally(
+    path: str = Query(..., description="Absolute path of the file to open on the local machine"),
+) -> dict[str, Any]:
+    """Open a file using the OS default application (Windows: os.startfile).
+
+    This only works when the server runs on the same machine as the user
+    (which is always the case for this local-only RAG system). Clicking
+    "Open file" in the UI triggers this endpoint, which opens the PDF/DOCX
+    in Acrobat/Word/etc.
+    """
+    import os
+    import platform
+
+    settings = get_settings()
+    target = Path(path).resolve()
+    # Security: only allow paths under data directory.
+    data_dir = Path(settings.data_dir).resolve()
+    project_data = data_dir.parent.resolve()
+    allowed = False
+    try:
+        target.relative_to(data_dir)
+        allowed = True
+    except ValueError:
+        try:
+            target.relative_to(project_data)
+            allowed = True
+        except ValueError:
+            pass
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Path outside data directory")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    system = platform.system()
+    try:
+        if system == "Windows":
+            os.startfile(str(target))
+        elif system == "Darwin":
+            import subprocess
+            subprocess.Popen(["open", str(target)])
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", str(target)])
+    except Exception as e:
+        logger.warning("Could not open file %s: %s", target, e)
+        raise HTTPException(status_code=500, detail=f"Could not open file: {e}") from e
+
+    return {"opened": str(target), "status": "ok"}
+
+
 @router.get("/image")
 def serve_image(path: str = Query(..., description="Absolute path to an extracted image")) -> FileResponse:
     """Serve an extracted image from `image_store_dir` (or its descendants)."""
