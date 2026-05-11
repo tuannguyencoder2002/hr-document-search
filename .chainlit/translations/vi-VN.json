@@ -1,0 +1,260 @@
+{
+    "common": {
+        "actions": {
+            "cancel": "Hủy",
+            "confirm": "Xác nhận",
+            "continue": "Tiếp tục",
+            "goBack": "Quay lại",
+            "reset": "Đặt lại",
+            "submit": "Gửi"
+        },
+        "status": {
+            "loading": "Đang tải...",
+            "error": {
+                "default": "Đã xảy ra lỗi",
+                "serverConnection": "Không kết nối được tới máy chủ"
+            }
+        }
+    },
+    "auth": {
+        "login": {
+            "title": "Đăng nhập để sử dụng ứng dụng",
+            "form": {
+                "email": {
+                    "label": "Email",
+                    "required": "Vui lòng nhập email",
+                    "placeholder": "email@company.vn"
+                },
+                "password": {
+                    "label": "Mật khẩu",
+                    "required": "Vui lòng nhập mật khẩu"
+                },
+                "actions": {
+                    "signin": "Đăng nhập"
+                },
+                "alternativeText": {
+                    "or": "HOẶC"
+                }
+            },
+            "errors": {
+                "default": "Không đăng nhập được",
+                "signin": "Thử đăng nhập với tài khoản khác",
+                "oauthSignin": "Thử đăng nhập với tài khoản khác",
+                "redirectUriMismatch": "URI chuyển hướng không khớp cấu hình OAuth",
+                "oauthCallback": "Thử đăng nhập với tài khoản khác",
+                "oauthCreateAccount": "Thử đăng nhập với tài khoản khác",
+                "emailCreateAccount": "Thử đăng nhập với tài khoản khác",
+                "callback": "Thử đăng nhập với tài khoản khác",
+                "oauthAccountNotLinked": "Vui lòng đăng nhập bằng tài khoản bạn đã dùng lần đầu",
+                "emailSignin": "Không gửi được email",
+                "emailVerify": "Vui lòng xác minh email — email mới đã được gửi",
+                "credentialsSignin": "Đăng nhập thất bại. Kiểm tra lại thông tin",
+                "sessionRequired": "Vui lòng đăng nhập để truy cập trang này"
+            }
+        },
+        "provider": {
+            "continue": "Tiếp tục với {{provider}}"
+        }
+    },
+    "chat": {
+        "input": {
+            "placeholder": "Nhập câu hỏi về chính sách, quy trình, quy định...",
+            "actions": {
+                "send": "Gửi",
+                "stop": "Dừng",
+                "attachFiles": "Đính kèm tài liệu"
+            }
+        },
+        "favorites": {
+            "use": "Dùng câu hỏi đã lưu",
+            "headline": "Câu hỏi yêu thích",
+            "remove": "Bỏ khỏi yêu thích",
+            "empty": {
+                "title": "Chưa có câu hỏi nào được lưu",
+                "description": "Gửi câu hỏi và đánh dấu sao để lưu"
+            }
+        },
+        "commands": {
+            "button": "Công cụ",
+            "changeTool": "Đổi công cụ",
+            "availableTools": "Công cụ khả dụng"
+        },
+        "speech": {
+            "start": "Bắt đầu ghi âm",
+            "stop": "Dừng ghi âm",
+            "connecting": "Đang kết nối"
+        },
+        "fileUpload": {
+            "dragDrop": "Kéo thả tài liệu vào đây",
+            "browse": "Chọn tài liệu",
+            "sizeLimit": "Tối đa:",
+            "errors": {
+                "failed": "Tải lên thất bại",
+                "cancelled": "Đã hủy tải"
+            },
+            "actions": {
+                "cancelUpload": "Hủy tải lên",
+                "removeAttachment": "Xóa tài liệu đính kèm"
+            }
+        },
+        "messages": {
+            "status": {
+                "using": "Đang dùng",
+                "used": "Đã dùng"
+            },
+            "actions": {
+                "copy": {
+                    "button": "Sao chép",
+                    "success": "Đã sao chép"
+                }
+            },
+            "feedback": {
+                "positive": "Hữu ích",
+                "negative": "Chưa hữu ích",
+                "edit": "Sửa phản hồi",
+                "dialog": {
+                    "title": "Thêm nhận xét",
+                    "submit": "Gửi phản hồi",
+                    "yourFeedback": "Phản hồi của bạn..."
+                },
+                "status": {
+                    "updating": "Đang cập nhật",
+                    "updated": "Đã cập nhật phản hồi"
+                }
+            }
+        },
+        "history": {
+            "title": "Câu hỏi gần đây",
+            "empty": "Chưa có...",
+            "show": "Xem lịch sử"
+        },
+        "settings": {
+            "title": "Cài đặt",
+            "customize": "Tùy chỉnh tùy chọn chat"
+        },
+        "watermark": "Mô hình ngôn ngữ có thể sai. Vui lòng kiểm tra thông tin quan trọng."
+    },
+    "threadHistory": {
+        "sidebar": {
+            "title": "Hội thoại trước",
+            "filters": {
+                "search": "Tìm kiếm",
+                "placeholder": "Tìm hội thoại..."
+            },
+            "timeframes": {
+                "today": "Hôm nay",
+                "yesterday": "Hôm qua",
+                "previous7days": "7 ngày gần đây",
+                "previous30days": "30 ngày gần đây"
+            },
+            "empty": "Chưa có hội thoại",
+            "actions": {
+                "close": "Đóng thanh bên",
+                "open": "Mở thanh bên"
+            }
+        },
+        "thread": {
+            "untitled": "Hội thoại chưa đặt tên",
+            "menu": {
+                "rename": "Đổi tên",
+                "share": "Chia sẻ",
+                "delete": "Xóa"
+            },
+            "actions": {
+                "share": {
+                    "title": "Chia sẻ link hội thoại",
+                    "button": "Chia sẻ",
+                    "status": {
+                        "copied": "Đã sao chép link",
+                        "created": "Đã tạo link chia sẻ",
+                        "unshared": "Đã tắt chia sẻ cho hội thoại này"
+                    },
+                    "error": {
+                        "create": "Không tạo được link chia sẻ",
+                        "unshare": "Không tắt được chia sẻ"
+                    }
+                },
+                "delete": {
+                    "title": "Xác nhận xóa",
+                    "description": "Thao tác này sẽ xóa hội thoại, toàn bộ tin nhắn và không thể khôi phục",
+                    "success": "Đã xóa hội thoại",
+                    "inProgress": "Đang xóa"
+                },
+                "rename": {
+                    "title": "Đổi tên hội thoại",
+                    "description": "Nhập tên mới cho hội thoại",
+                    "form": {
+                        "name": {
+                            "label": "Tên",
+                            "placeholder": "Nhập tên mới"
+                        }
+                    },
+                    "success": "Đã đổi tên",
+                    "inProgress": "Đang đổi tên"
+                }
+            }
+        }
+    },
+    "navigation": {
+        "header": {
+            "chat": "Chat",
+            "readme": "Giới thiệu",
+            "theme": {
+                "light": "Giao diện sáng",
+                "dark": "Giao diện tối",
+                "system": "Theo hệ thống"
+            }
+        },
+        "newChat": {
+            "button": "Hội thoại mới",
+            "dialog": {
+                "title": "Tạo hội thoại mới",
+                "description": "Thao tác này sẽ xóa hội thoại hiện tại. Bạn có chắc chứ?",
+                "tooltip": "Hội thoại mới"
+            }
+        },
+        "user": {
+            "menu": {
+                "settings": "Cài đặt",
+                "settingsKey": "S",
+                "apiKeys": "API Keys",
+                "logout": "Đăng xuất"
+            }
+        }
+    },
+    "apiKeys": {
+        "title": "API Key cần thiết",
+        "description": "Ứng dụng cần các API key sau. Key được lưu trong trình duyệt của bạn.",
+        "success": {
+            "saved": "Đã lưu"
+        }
+    },
+    "alerts": {
+        "info": "Thông tin",
+        "note": "Ghi chú",
+        "tip": "Mẹo",
+        "important": "Quan trọng",
+        "warning": "Cảnh báo",
+        "caution": "Chú ý",
+        "debug": "Debug",
+        "example": "Ví dụ",
+        "success": "Thành công",
+        "help": "Trợ giúp",
+        "idea": "Ý tưởng",
+        "pending": "Đang xử lý",
+        "security": "Bảo mật",
+        "beta": "Beta",
+        "best-practice": "Thực hành tốt"
+    },
+    "components": {
+        "MultiSelectInput": {
+            "placeholder": "Chọn..."
+        },
+        "DatePickerInput": {
+            "placeholder": {
+                "single": "Chọn ngày",
+                "range": "Chọn khoảng ngày"
+            }
+        }
+    }
+}

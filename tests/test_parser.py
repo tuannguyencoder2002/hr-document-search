@@ -9,7 +9,7 @@ import pytest
 from src.ingestion.parser import parse_file, parse_pdf, parse_txt
 
 
-def test_parse_empty_pdf_returns_empty(tmp_path: Path):
+def test_parse_txt_basic(tmp_path: Path):
     f = tmp_path / "hello.txt"
     f.write_text("Nhân viên được nghỉ 12 ngày.", encoding="utf-8")
     docs = parse_txt(f)

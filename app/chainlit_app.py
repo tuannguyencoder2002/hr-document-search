@@ -164,16 +164,9 @@ async def set_starters() -> list[cl.Starter]:
 
 @cl.on_chat_start
 async def on_chat_start() -> None:
-    settings = get_settings()
-    welcome = (
-        "### 👋 Trợ lý tài liệu\n\n"
-        "Đặt câu hỏi — tôi trả lời dựa trên tài liệu đã **index trong Qdrant**. "
-        "Mỗi câu trả lời có thể kèm **nguồn** (bấm để xem đoạn gốc).\n\n"
-        "📎 **Thêm tài liệu:** đính kèm file **PDF / DOCX / TXT / MD** (tối đa 50MB, tối đa 10 file/lần) "
-        "cùng tin nhắn — hệ thống sẽ **vector hóa và ghi vào DB** ngay, không cần chạy file `.bat`.\n\n"
-        f"_Model: `{settings.ollama_model}` · Embedding: `{settings.embedding_model}`_"
-    )
-    await cl.Message(content=welcome, author="HR Assistant").send()
+    # Welcome screen is rendered from `chainlit.md`.
+    # Keep this hook empty to avoid a duplicate greeting.
+    return None
 
 
 @cl.on_message
