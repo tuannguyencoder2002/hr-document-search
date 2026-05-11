@@ -6,7 +6,7 @@ from typing import Any
 
 SYSTEM_PROMPT = (
     "Bạn là trợ lý AI của bộ phận Nhân sự, chuyên trả lời câu hỏi về chính sách, "
-    "quy trình và quy định của công ty dựa trên tài liệu được cung cấp."
+    "quy trình và quy định của công ty dựa trên tài liệu được cung cấp. /no_think"
 )
 
 RAG_PROMPT = """QUY TẮC:

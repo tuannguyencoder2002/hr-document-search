@@ -77,6 +77,7 @@ class OllamaLLM:
             "top_p": self.top_p,
             "num_predict": self.max_tokens,
             "num_gpu": self.num_gpu,  # -1 means "all layers" for Ollama
+            "num_ctx": 4096,          # RAG prompts are ~3K chars; 4K context is plenty
         }
 
     def generate(self, question: str, context: str | list[dict[str, Any]]) -> str:
