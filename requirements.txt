@@ -23,9 +23,6 @@ Pillow>=10.0.0
 # Text processing
 langchain-text-splitters>=0.2.0
 
-# UI
-chainlit>=2.0.0
-
 # Utils
 pydantic>=2.6.0
 pydantic-settings>=2.4.0

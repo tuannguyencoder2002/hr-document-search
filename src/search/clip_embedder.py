@@ -64,16 +64,35 @@ class CLIPEmbedder:
         self._image_model = None
 
     def _load_st(self, name: str) -> Any:
-        """Load a SentenceTransformer, allowing HF download if not cached."""
+        """Load a SentenceTransformer. Tries cache first, falls back to HF download.
+
+        HF_HUB_OFFLINE is a startup-time env var baked into huggingface_hub on
+        import, so toggling os.environ at runtime has no effect. Instead we
+        pass local_files_only=True first, and on failure we re-import with
+        an explicit download attempt via huggingface_hub directly.
+        """
         from sentence_transformers import SentenceTransformer
 
+        # Try with local cache first.
         try:
-            return SentenceTransformer(name, device=self.device)
-        except (OSError, Exception) as e:
-            # Likely offline + not cached. Retry once with HF online.
-            logger.info("CLIP offline load failed (%s), retrying with HF online…", type(e).__name__)
-            with _allow_hf_download():
-                return SentenceTransformer(name, device=self.device)
+            return SentenceTransformer(name, device=self.device, local_files_only=True)
+        except Exception as e:
+            logger.info("CLIP %s not in cache (%s) — downloading now…", name, type(e).__name__)
+
+        # Force download via huggingface_hub's snapshot_download with
+        # local_files_only explicitly False, bypassing the offline env flag.
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(
+                repo_id=name,
+                local_files_only=False,  # explicit override of HF_HUB_OFFLINE
+                etag_timeout=30,
+            )
+            return SentenceTransformer(name, device=self.device, local_files_only=True)
+        except Exception as e:
+            logger.error("CLIP download failed for %s: %s", name, e)
+            raise
 
     def _ensure_text(self) -> Any:
         if self._text_model is None:
