@@ -42,3 +42,25 @@ htmlcov/
 
 # OS
 Thumbs.db
+
+# Tài liệu / corpus & nguyên liệu thô (chỉ dùng local, không đẩy git)
+data/corpus/
+data/raw_resources/
+
+# Định dạng tài liệu & media thường gặp
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.mp3
+*.mp4
+*.wav
+*.rar
+*.zip
+
+# Office temp / sidecar
+~$*
+*.sfk

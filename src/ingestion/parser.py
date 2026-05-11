@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class ParsedDocument:
@@ -32,23 +36,31 @@ def parse_pdf(path: str | Path) -> list[ParsedDocument]:
     if p.suffix.lower() != ".pdf":
         raise ValueError(f"Expected .pdf, got {p.suffix}")
 
+    if p.stat().st_size == 0:
+        logger.warning("Skipping empty PDF (0 bytes): %s", p)
+        return []
+
     docs: list[ParsedDocument] = []
-    with fitz.open(p) as pdf:
-        for page_index, page in enumerate(pdf, start=1):
-            text = page.get_text("text") or ""
-            if not text.strip():
-                continue
-            docs.append(
-                ParsedDocument(
-                    text=text,
-                    metadata={
-                        "source": p.name,
-                        "source_path": str(p),
-                        "page": page_index,
-                        "file_type": "pdf",
-                    },
+    try:
+        with fitz.open(p) as pdf:
+            for page_index, page in enumerate(pdf, start=1):
+                text = page.get_text("text") or ""
+                if not text.strip():
+                    continue
+                docs.append(
+                    ParsedDocument(
+                        text=text,
+                        metadata={
+                            "source": p.name,
+                            "source_path": str(p),
+                            "page": page_index,
+                            "file_type": "pdf",
+                        },
+                    )
                 )
-            )
+    except Exception as e:
+        logger.warning("Cannot read PDF %s (%s): %s", p, type(e).__name__, e)
+        return []
     return docs
 
 

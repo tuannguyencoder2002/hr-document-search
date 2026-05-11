@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
+    qdrant_mode: str = "local"  # "local" (embedded, no Docker) | "remote" (needs Qdrant server)
+    qdrant_local_path: str = ""  # auto-set to PROJECT_ROOT/qdrant_data if empty
     qdrant_collection: str = "hr_documents"
     qdrant_dense_name: str = "dense"
     qdrant_sparse_name: str = "sparse"
@@ -55,7 +57,7 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
 
     # Data
-    data_dir: Path = Field(default=PROJECT_ROOT / "data" / "hr_docs")
+    data_dir: Path = Field(default=PROJECT_ROOT / "data" / "corpus")
 
     # Device
     device: str = "auto"  # "auto" | "cuda" | "cpu"
@@ -69,6 +71,20 @@ class Settings(BaseSettings):
             return "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             return "cpu"
+
+    def resolved_qdrant_local_path(self) -> str:
+        if self.qdrant_local_path:
+            return self.qdrant_local_path
+        return str(PROJECT_ROOT / "qdrant_data")
+
+    def create_qdrant_client(self):
+        """Factory: return QdrantClient based on qdrant_mode."""
+        from qdrant_client import QdrantClient
+
+        if self.qdrant_mode == "local":
+            path = self.resolved_qdrant_local_path()
+            return QdrantClient(path=path)
+        return QdrantClient(url=self.qdrant_url)
 
 
 @lru_cache(maxsize=1)

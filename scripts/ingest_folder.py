@@ -37,12 +37,25 @@ def main() -> None:
     if args.department:
         extra["department"] = args.department
 
+    ok_files = 0
+    failed = 0
     for f in files:
         logger.info("Ingesting %s", f)
-        summary = indexer.ingest_file(f, extra_meta=dict(extra))
-        total_chunks += summary["chunks_indexed"]
+        try:
+            summary = indexer.ingest_file(f, extra_meta=dict(extra))
+            total_chunks += summary["chunks_indexed"]
+            ok_files += 1
+        except Exception as e:
+            failed += 1
+            logger.exception("Failed to ingest %s: %s", f, e)
 
-    logger.info("Done. %d files ingested, %d chunks total.", len(files), total_chunks)
+    logger.info(
+        "Done. %d/%d files OK, %d failed, %d chunks total.",
+        ok_files,
+        len(files),
+        failed,
+        total_chunks,
+    )
 
 
 if __name__ == "__main__":

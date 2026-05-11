@@ -28,7 +28,15 @@ auto_tag_thread = true
 edit_message = true
 
 [features.spontaneous_file_upload]
-enabled = false
+enabled = true
+accept = [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/markdown",
+]
+max_files = 10
+max_size_mb = 50
 
 [UI]
 # Name of the assistant.

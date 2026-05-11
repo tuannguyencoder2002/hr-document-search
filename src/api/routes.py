@@ -252,11 +252,20 @@ def health() -> HealthResponse:
     settings = get_settings()
     qdrant_status = "unknown"
     ollama_status = "unknown"
-    try:
-        r = requests.get(f"{settings.qdrant_url}/healthz", timeout=2)
-        qdrant_status = "ok" if r.status_code == 200 else f"error:{r.status_code}"
-    except Exception as e:
-        qdrant_status = f"down:{type(e).__name__}"
+
+    if settings.qdrant_mode == "local":
+        try:
+            client = settings.create_qdrant_client()
+            client.get_collections()
+            qdrant_status = "ok (local)"
+        except Exception as e:
+            qdrant_status = f"error:{type(e).__name__}"
+    else:
+        try:
+            r = requests.get(f"{settings.qdrant_url}/healthz", timeout=2)
+            qdrant_status = "ok" if r.status_code == 200 else f"error:{r.status_code}"
+        except Exception as e:
+            qdrant_status = f"down:{type(e).__name__}"
 
     try:
         r = requests.get(f"{settings.ollama_url}/api/tags", timeout=2)
@@ -264,5 +273,5 @@ def health() -> HealthResponse:
     except Exception as e:
         ollama_status = f"down:{type(e).__name__}"
 
-    overall = "ok" if qdrant_status == "ok" and ollama_status == "ok" else "degraded"
+    overall = "ok" if "ok" in qdrant_status and ollama_status == "ok" else "degraded"
     return HealthResponse(status=overall, qdrant=qdrant_status, ollama=ollama_status)

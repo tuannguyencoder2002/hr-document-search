@@ -40,7 +40,7 @@ class HybridRetriever:
         collection: str | None = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or QdrantClient(url=settings.qdrant_url)
+        self.client = client or settings.create_qdrant_client()
         self.embedder = embedder or BGEEmbedder()
         self.collection = collection or settings.qdrant_collection
         self.dense_name = settings.qdrant_dense_name

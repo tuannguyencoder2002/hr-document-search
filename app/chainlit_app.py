@@ -1,10 +1,10 @@
 """Chainlit UI for HR Document Search.
 
-Pure chat interface on top of the existing pipeline:
-    retriever (hybrid + RRF) -> reranker (cross-encoder) -> Ollama.
+Pipeline: retriever (hybrid + RRF) -> reranker (cross-encoder) -> Ollama.
 
-Documents are indexed offline via `scripts/ingest_folder.py` — the UI only
-reads from the existing Qdrant collection and never accepts uploads.
+Users can **attach PDF / DOCX / TXT / MD** with a message to index into Qdrant
+immediately (same pipeline as `scripts/ingest_folder.py`), then ask questions
+in the same or next messages. Chat-only flow still works when no file is attached.
 
 Each answer carries Chainlit Source elements so users can click citations to
 inspect the exact chunk that grounded the answer.
@@ -13,7 +13,10 @@ inspect the exact chunk that grounded the answer.
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import chainlit as cl
@@ -21,6 +24,7 @@ import chainlit as cl
 from src.config import get_settings
 from src.generation.llm import OllamaLLM
 from src.generation.prompts import build_prompt
+from src.ingestion.indexer import Indexer
 from src.search.embedder import BGEEmbedder
 from src.search.reranker import CrossEncoderReranker
 from src.search.retriever import HybridRetriever
@@ -31,17 +35,35 @@ logger = get_logger(__name__)
 
 # Lazy-loaded singletons so UI starts fast and models are only warmed on first use.
 _embedder: BGEEmbedder | None = None
+_indexer: Indexer | None = None
 _retriever: HybridRetriever | None = None
 _reranker: CrossEncoderReranker | None = None
 _llm: OllamaLLM | None = None
 
+UPLOAD_EXTS = {".pdf", ".docx", ".txt", ".md"}
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+_SKIP_ELEMENT_TYPES = frozenset({"image", "audio", "video"})
 
-def _get_components() -> tuple[HybridRetriever, CrossEncoderReranker, OllamaLLM]:
-    global _embedder, _retriever, _reranker, _llm
+
+def _ensure_embedder() -> BGEEmbedder:
+    global _embedder
     if _embedder is None:
         _embedder = BGEEmbedder()
+    return _embedder
+
+
+def _get_indexer() -> Indexer:
+    global _indexer
+    if _indexer is None:
+        _indexer = Indexer(embedder=_ensure_embedder())
+    return _indexer
+
+
+def _get_components() -> tuple[HybridRetriever, CrossEncoderReranker, OllamaLLM]:
+    global _retriever, _reranker, _llm
+    emb = _ensure_embedder()
     if _retriever is None:
-        _retriever = HybridRetriever(embedder=_embedder)
+        _retriever = HybridRetriever(embedder=emb)
     if _reranker is None:
         _reranker = CrossEncoderReranker()
     if _llm is None:
@@ -58,6 +80,64 @@ def _format_source_display(meta: dict[str, Any], rerank_score: float) -> str:
 async def _run_blocking(fn, *args, **kwargs):
     """Run a blocking function in a worker thread so Chainlit stays responsive."""
     return await asyncio.to_thread(fn, *args, **kwargs)
+
+
+def _ingest_one_uploaded_file(src_path: Path, display_name: str) -> str:
+    """Copy to a path with correct suffix, ingest, delete temp. Returns user-facing line."""
+    ext = Path(display_name).suffix.lower()
+    if not ext:
+        ext = src_path.suffix.lower()
+    if ext not in UPLOAD_EXTS:
+        return f"**Bỏ qua** `{display_name}` — chỉ hỗ trợ {', '.join(sorted(UPLOAD_EXTS))}."
+    if not src_path.is_file():
+        return f"**Lỗi** `{display_name}` — không đọc được file tạm."
+    size = src_path.stat().st_size
+    if size > MAX_UPLOAD_BYTES:
+        return f"**Bỏ qua** `{display_name}` — vượt quá 50MB."
+
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
+            tmp = Path(tf.name)
+        shutil.copy2(src_path, tmp)
+        indexer = _get_indexer()
+        summary = indexer.ingest_file(
+            tmp,
+            extra_meta={
+                "source": display_name,
+                "doc_type": "upload",
+                "department": "chainlit",
+            },
+        )
+        n = summary["chunks_indexed"]
+        if n == 0:
+            return f"**Không có nội dung** sau khi parse `{display_name}` (file rỗng hoặc không trích được chữ)."
+        return (
+            f"**Đã index** `{display_name}` → **{n}** chunk "
+            f"(document_id: `{summary['document_id']}`)."
+        )
+    except Exception as e:
+        logger.exception("Ingest upload failed for %s", display_name)
+        return f"**Lỗi index** `{display_name}`: {e}"
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+
+
+async def _handle_uploads(message: cl.Message) -> list[str]:
+    """Process Chainlit spontaneous file uploads attached to the user message."""
+    lines: list[str] = []
+    for el in message.elements or []:
+        el_type = getattr(el, "type", None) or ""
+        if el_type in _SKIP_ELEMENT_TYPES:
+            continue
+        raw_path = getattr(el, "path", None)
+        if not raw_path:
+            continue
+        src = Path(str(raw_path))
+        name = getattr(el, "name", None) or src.name or "upload"
+        lines.append(await _run_blocking(_ingest_one_uploaded_file, src, name))
+    return lines
 
 
 @cl.set_starters
@@ -86,10 +166,11 @@ async def set_starters() -> list[cl.Starter]:
 async def on_chat_start() -> None:
     settings = get_settings()
     welcome = (
-        "### 👋 Trợ lý Nhân sự\n\n"
-        "Tôi trả lời câu hỏi về **chính sách, quy trình và quy định** dựa trên "
-        "tài liệu HR đã được index sẵn. Mỗi câu trả lời đều kèm **nguồn tham khảo** — "
-        "bấm vào để xem đoạn tài liệu gốc.\n\n"
+        "### 👋 Trợ lý tài liệu\n\n"
+        "Đặt câu hỏi — tôi trả lời dựa trên tài liệu đã **index trong Qdrant**. "
+        "Mỗi câu trả lời có thể kèm **nguồn** (bấm để xem đoạn gốc).\n\n"
+        "📎 **Thêm tài liệu:** đính kèm file **PDF / DOCX / TXT / MD** (tối đa 50MB, tối đa 10 file/lần) "
+        "cùng tin nhắn — hệ thống sẽ **vector hóa và ghi vào DB** ngay, không cần chạy file `.bat`.\n\n"
         f"_Model: `{settings.ollama_model}` · Embedding: `{settings.embedding_model}`_"
     )
     await cl.Message(content=welcome, author="HR Assistant").send()
@@ -98,8 +179,21 @@ async def on_chat_start() -> None:
 @cl.on_message
 async def on_message(message: cl.Message) -> None:
     question = (message.content or "").strip()
+
+    if message.elements:
+        ingest_lines = await _handle_uploads(message)
+        if ingest_lines:
+            await cl.Message(
+                content="### Kết quả upload / index\n\n" + "\n\n".join(ingest_lines),
+                author="HR Assistant",
+            ).send()
+
     if not question:
-        await cl.Message(content="Vui lòng nhập câu hỏi.", author="HR Assistant").send()
+        if not message.elements:
+            await cl.Message(
+                content="Vui lòng nhập câu hỏi, hoặc đính kèm file PDF/DOCX/TXT/MD để index.",
+                author="HR Assistant",
+            ).send()
         return
 
     retriever, reranker, llm = _get_components()
@@ -122,7 +216,7 @@ async def on_message(message: cl.Message) -> None:
     if not retrieved:
         answer_msg.content = (
             "Tài liệu hiện tại không có thông tin về vấn đề này. "
-            "Vui lòng liên hệ bộ phận HR để được hỗ trợ."
+            "Vui lòng thử đính kèm thêm tài liệu liên quan hoặc đổi cách đặt câu hỏi."
         )
         await answer_msg.update()
         return

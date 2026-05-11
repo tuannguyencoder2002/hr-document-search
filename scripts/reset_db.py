@@ -13,7 +13,7 @@ def main() -> None:
     setup_logging()
     logger = get_logger(__name__)
     settings = get_settings()
-    client = QdrantClient(url=settings.qdrant_url)
+    client = settings.create_qdrant_client()
     existing = {c.name for c in client.get_collections().collections}
     if settings.qdrant_collection in existing:
         client.delete_collection(settings.qdrant_collection)

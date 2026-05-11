@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from src.ingestion.parser import parse_file, parse_txt
+from src.ingestion.parser import parse_file, parse_pdf, parse_txt
 
 
-def test_parse_txt(tmp_path: Path):
+def test_parse_empty_pdf_returns_empty(tmp_path: Path):
     f = tmp_path / "hello.txt"
     f.write_text("Nhân viên được nghỉ 12 ngày.", encoding="utf-8")
     docs = parse_txt(f)
@@ -23,6 +23,12 @@ def test_parse_empty_txt_returns_empty(tmp_path: Path):
     f = tmp_path / "empty.txt"
     f.write_text("", encoding="utf-8")
     assert parse_txt(f) == []
+
+
+def test_parse_empty_pdf_returns_empty(tmp_path: Path):
+    f = tmp_path / "empty.pdf"
+    f.write_bytes(b"")
+    assert parse_pdf(f) == []
 
 
 def test_parse_missing_file_raises(tmp_path: Path):

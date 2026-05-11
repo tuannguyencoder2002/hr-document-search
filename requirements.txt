@@ -10,7 +10,7 @@ ollama==0.4.0
 sentence-transformers>=3.0.0
 FlagEmbedding>=1.2.0
 torch>=2.2.0
-transformers>=4.40.0
+transformers>=4.47.0
 
 # Vector DB
 qdrant-client>=1.12.0
