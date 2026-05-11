@@ -57,7 +57,7 @@ default_theme = "light"
 layout = "wide"
 
 # Description of the assistant. This is used for HTML tags.
-description = "Trợ lý tìm kiếm tài liệu — chạy 100% local."
+description = "Trợ lý tìm kiếm tài liệu học tập — chạy 100% local."
 
 # Chain of Thought (CoT) display mode. Can be "hidden", "tool_call" or "full".
 cot = "tool_call"

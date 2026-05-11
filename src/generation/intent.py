@@ -47,28 +47,27 @@ _SMALL_TALK_KEYWORDS = {
 # Canonical response templates (Vietnamese, professional tone).
 RESPONSES: dict[Intent, str] = {
     Intent.GREETING: (
-        "Xin chào! Tôi là **Trợ lý Tài liệu HR**. "
+        "Xin chào! Tôi là **Trợ lý tài liệu học tập**. "
         "Bạn có thể hỏi tôi về:\n\n"
-        "- Chế độ nghỉ phép, nghỉ ốm, nghỉ việc\n"
-        "- Lương thưởng, phụ cấp, đánh giá KPI\n"
-        "- Quy trình onboarding, làm việc từ xa\n"
-        "- Nội quy, chính sách của công ty\n\n"
+        "- Giáo trình, slide, sách tham khảo đã được index\n"
+        "- Khái niệm, bài tập, ôn tập (CSDL, CTDL, ML, vi xử lý…)\n"
+        "- Tiếng Anh / VSTEP, từ vựng theo chủ đề\n"
+        "- Bất kỳ nội dung nào có trong kho tài liệu học tập của bạn\n\n"
         "Hãy đặt câu hỏi cụ thể để tôi tra cứu trong tài liệu nhé."
     ),
     Intent.THANKS: (
-        "Rất vui được giúp bạn. Nếu có câu hỏi khác về tài liệu HR, cứ hỏi nhé."
+        "Rất vui được giúp bạn. Nếu có câu hỏi khác về tài liệu học tập, cứ hỏi nhé."
     ),
     Intent.GOODBYE: (
-        "Tạm biệt! Chúc bạn một ngày làm việc hiệu quả."
+        "Tạm biệt! Chúc bạn học tập hiệu quả."
     ),
     Intent.SMALL_TALK: (
-        "Tôi là **Trợ lý Tài liệu HR** — hỏi đáp về chính sách, quy trình và "
-        "quy định nội bộ dựa trên tài liệu đã được index. Mọi câu trả lời đều "
-        "kèm nguồn trích dẫn để bạn kiểm chứng.\n\n"
+        "Tôi là **Trợ lý tài liệu học tập** — hỏi đáp dựa trên tài liệu đã được index. "
+        "Mọi câu trả lời đều kèm nguồn trích dẫn để bạn kiểm chứng.\n\n"
         "**Một số ví dụ câu hỏi:**\n"
-        "- Nhân viên được nghỉ phép bao nhiêu ngày mỗi năm?\n"
-        "- Lương thử việc bằng bao nhiêu phần trăm lương chính thức?\n"
-        "- Quy trình xin nghỉ việc gồm những bước nào?"
+        "- Chuẩn hóa CSDL là gì, các dạng chuẩn 1NF–3NF?\n"
+        "- So sánh thuật toán DFS và BFS?\n"
+        "- Cấu trúc bài thi VSTEP phần Speaking như thế nào?"
     ),
 }
 

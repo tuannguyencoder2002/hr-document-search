@@ -80,6 +80,34 @@ class OllamaLLM:
             "num_ctx": 4096,          # RAG prompts are ~3K chars; 4K context is plenty
         }
 
+    @staticmethod
+    def _as_stream_part_dict(part: Any) -> dict[str, Any]:
+        if isinstance(part, dict):
+            return part
+        model_dump = getattr(part, "model_dump", None)
+        if callable(model_dump):
+            return model_dump()
+        as_dict = getattr(part, "dict", None)
+        if callable(as_dict):
+            return as_dict()
+        return {}
+
+    @staticmethod
+    def _chat_stream_delta(part: dict[str, Any]) -> str:
+        """Extract text delta from one streamed chat chunk (Ollama versions differ)."""
+        msg = part.get("message")
+        if isinstance(msg, dict):
+            chunk = msg.get("content") or ""
+            if chunk:
+                return chunk
+        if isinstance(msg, str) and msg:
+            return msg
+        # Legacy/alternate shapes
+        if isinstance(part.get("content"), str):
+            return part["content"]
+        alt = part.get("response")
+        return alt if isinstance(alt, str) else ""
+
     def generate(self, question: str, context: str | list[dict[str, Any]]) -> str:
         """Blocking generation. Prefer `stream()` in interactive UIs."""
         client = self._ensure_client()
@@ -105,6 +133,6 @@ class OllamaLLM:
             keep_alive=self.keep_alive,
             stream=True,
         ):
-            chunk = (part.get("message") or {}).get("content", "")
+            chunk = self._chat_stream_delta(self._as_stream_part_dict(part))
             if chunk:
                 yield chunk

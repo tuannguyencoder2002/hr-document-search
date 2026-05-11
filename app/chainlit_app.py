@@ -320,12 +320,12 @@ async def _run_image_search(query_image: Path, text_query: str) -> None:
     # Wait for base warmup (ensures GPU is ready, avoids first-query jank).
     if not _warmup_done.is_set():
         warming = cl.Message(
-        
+            content="_Đang khởi động mô hình (embedder, reranker, LLM)…_",
             author="Document Search Assistant",
         )
         await warming.send()
         await _warmup_models_once()
-    
+        warming.content = "_Đã sẵn sàng._"
         await warming.update()
 
     header = "Search Images"
@@ -386,7 +386,7 @@ async def set_starters() -> list[cl.Starter]:
     return [
         cl.Starter(
             label="Ngày phép",
-            message="Nhân viên được nghỉ phép tối đa bao nhiêu ngày mỗi năm?",
+            message="Chuẩn hóa CSDL: 1NF, 2NF và 3NF khác nhau thế nào?",
         ),
         cl.Starter(
             label="Quy trình nghỉ việc",
@@ -525,7 +525,7 @@ async def on_message(message: cl.Message) -> None:
     answer_msg.content = ""
     answer_parts: list[str] = []
     token_count = 0
-    async with cl.Step(name="🧠 Qwen3-8B generate", type="llm") as step:
+    async with cl.Step(name=f"🧠 {llm.model} generate", type="llm") as step:
         prompt = build_prompt(question, reranked)
         step.input = prompt[:1500] + ("..." if len(prompt) > 1500 else "")
         logger.info("[%s] generate: prompt_chars=%d context_chunks=%d",
@@ -540,6 +540,18 @@ async def on_message(message: cl.Message) -> None:
             answer_parts.append(delta)
             token_count += 1
             await answer_msg.stream_token(delta)
+        if not answer_parts:
+            logger.warning(
+                "[%s] stream produced no text; falling back to blocking generate()",
+                request_id,
+            )
+            fb = await _run_blocking(llm.generate, question, reranked)
+            if fb:
+                answer_parts.append(fb)
+                token_count = max(1, token_count + 1)
+                answer_msg.content = fb
+                await answer_msg.update()
+                first_token_ms = first_token_ms or int((time.perf_counter() - t0) * 1000)
         stage_timings["generate_ms"] = int((time.perf_counter() - t0) * 1000)
         total_chars = sum(len(p) for p in answer_parts)
         tok_per_sec = (

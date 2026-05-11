@@ -7,7 +7,7 @@ from typing import Any
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 
-from src.config import get_settings
+from src.config import get_settings, get_shared_qdrant_client
 from src.search.embedder import BGEEmbedder
 from src.utils.logger import get_logger
 
@@ -40,7 +40,7 @@ class HybridRetriever:
         collection: str | None = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or settings.create_qdrant_client()
+        self.client = client or get_shared_qdrant_client()
         self.embedder = embedder or BGEEmbedder()
         self.collection = collection or settings.qdrant_collection
         self.dense_name = settings.qdrant_dense_name

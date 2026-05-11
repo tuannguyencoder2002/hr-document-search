@@ -10,7 +10,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 from tqdm import tqdm
 
-from src.config import get_settings
+from src.config import get_settings, get_shared_qdrant_client
 from src.ingestion.chunker import Chunk, chunk_documents
 from src.ingestion.cleaner import clean_text
 from src.ingestion.parser import parse_file
@@ -56,7 +56,7 @@ class Indexer:
         image_indexer: Any = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or settings.create_qdrant_client()
+        self.client = client or get_shared_qdrant_client()
         self.embedder = embedder or BGEEmbedder()
         self.collection = collection or settings.qdrant_collection
         self.dense_name = settings.qdrant_dense_name

@@ -20,7 +20,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 from tqdm import tqdm
 
-from src.config import get_settings
+from src.config import get_settings, get_shared_qdrant_client
 from src.ingestion.image_extractor import ExtractedImage, extract_images
 from src.search.clip_embedder import CLIPEmbedder
 from src.utils.logger import get_logger
@@ -58,7 +58,7 @@ class ImageIndexer:
         collection: str | None = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or settings.create_qdrant_client()
+        self.client = client or get_shared_qdrant_client()
         self.clip = clip or CLIPEmbedder()
         self.collection = collection or settings.image_collection
         self.vector_size = settings.clip_vector_size

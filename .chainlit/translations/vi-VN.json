@@ -131,8 +131,7 @@
         "settings": {
             "title": "Cài đặt",
             "customize": "Tùy chỉnh tùy chọn chat"
-        },
-        "watermark": "Mô hình ngôn ngữ có thể sai. Vui lòng kiểm tra thông tin quan trọng."
+        }
     },
     "threadHistory": {
         "sidebar": {

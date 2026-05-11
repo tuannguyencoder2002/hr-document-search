@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 SYSTEM_PROMPT = (
-    "Bạn là trợ lý AI chuyên tìm kiếm và tóm tắt nội dung từ tài liệu được cung cấp. "
+    "Bạn là trợ lý AI chuyên tìm kiếm và tóm tắt nội dung từ tài liệu học tập được cung cấp. "
     "Luôn trả lời ngắn gọn bằng tiếng Việt và trích dẫn nguồn."
 )
 
 RAG_PROMPT = """QUY TẮC:
 1. Chỉ trả lời dựa trên thông tin trong [TÀI LIỆU] bên dưới.
-2. Nếu tài liệu không chứa câu trả lời, nói rõ: "Tài liệu hiện tại không có thông tin về vấn đề này. Vui lòng liên hệ bộ phận HR để được hỗ trợ."
+2. Nếu tài liệu không chứa câu trả lời, nói rõ: "Tài liệu hiện tại không có thông tin về vấn đề này. Bạn thử diễn đạt lại câu hỏi, đổi từ khóa, hoặc đính kèm thêm tài liệu liên quan."
 3. Luôn trích dẫn nguồn ở cuối mỗi ý: [Tên file, Trang X]
 4. Trả lời ngắn gọn, rõ ràng (3-5 câu).
 5. Ngôn ngữ: tiếng Việt, trang trọng nhưng thân thiện.

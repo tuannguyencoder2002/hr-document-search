@@ -102,6 +102,12 @@ class Settings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
+def get_shared_qdrant_client():
+    """Single process-wide client. Embedded/local Qdrant locks the data dir — only one instance may open it."""
+    return get_settings().create_qdrant_client()
+
+
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Singleton accessor for settings."""
     return Settings()

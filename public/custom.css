@@ -119,11 +119,26 @@ header,
 }
 
 /* === Chat messages === */
+.message.assistant {
+  align-self: center !important;
+  max-width: min(48rem, 94vw) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.message.assistant .MuiAvatar-root,
+.message.assistant [class*="Avatar-root"],
+.message.assistant [class*="avatar"] {
+  width: 52px !important;
+  height: 52px !important;
+  min-width: 52px !important;
+  min-height: 52px !important;
+  font-size: 1.15rem !important;
+}
+
 .message.user .message-content,
 [data-step-type="user_message"] .message-content {
-  background-color: var(--hr-accent-soft) !important;
   color: var(--hr-text) !important;
-  border: 1px solid var(--hr-border);
   border-radius: 16px;
   padding: 0.75rem 1rem;
 }

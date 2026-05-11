@@ -1,13 +1,13 @@
 # 👋 Document Search Assistant
 
-Hệ thống hỏi đáp tài liệu HR nội bộ, chạy **100% local**. Mọi câu trả lời đều kèm **nguồn tham khảo**, bấm vào link nguồn để xem nguyên văn đoạn tài liệu.
+Hệ thống hỏi đáp **tài liệu học tập**, chạy **100% local**. Mọi câu trả lời đều kèm **nguồn tham khảo**, bấm vào link nguồn để xem nguyên văn đoạn tài liệu.
 
 ### Ví dụ câu hỏi
 
-- Nhân viên được nghỉ phép tối đa bao nhiêu ngày mỗi năm?
-- Quy trình xin nghỉ việc gồm những bước gì?
-- Lương thử việc bằng bao nhiêu phần trăm lương chính thức?
-- Chính sách làm việc từ xa của công ty như thế nào?
+- Chuẩn hóa CSDL: 1NF, 2NF, 3NF khác nhau thế nào?
+- Thuật toán DFS và BFS áp dụng khi nào?
+- Ôn tập VSTEP: cấu trúc bài Speaking / Listening ra sao?
+- Vi xử lý: nguyên lý hoạt động của ADC ngoài vi là gì?
 
 ### Thêm tài liệu tạm thời
 

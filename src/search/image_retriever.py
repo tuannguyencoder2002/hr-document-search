@@ -7,7 +7,7 @@ from typing import Any
 
 from qdrant_client import QdrantClient
 
-from src.config import get_settings
+from src.config import get_settings, get_shared_qdrant_client
 from src.ingestion.image_indexer import IMAGE_VECTOR_NAME
 from src.search.clip_embedder import CLIPEmbedder
 from src.utils.logger import get_logger
@@ -29,7 +29,7 @@ class ImageRetriever:
         collection: str | None = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or settings.create_qdrant_client()
+        self.client = client or get_shared_qdrant_client()
         self.clip = clip or CLIPEmbedder()
         self.collection = collection or settings.image_collection
         self.default_top_k = settings.image_top_k
