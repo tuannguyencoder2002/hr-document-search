@@ -455,14 +455,6 @@ async def on_message(message: cl.Message) -> None:
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
-    # Remove previous answer message entirely so side panel clears.
-    prev_msg = cl.user_session.get("last_answer_msg")
-    if prev_msg is not None:
-        try:
-            await prev_msg.remove()
-        except Exception:
-            pass
-
     answer_msg = cl.Message(content="", author="HR Assistant")
     await answer_msg.send()
     cl.user_session.set("last_answer_msg", answer_msg)
