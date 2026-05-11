@@ -311,6 +311,18 @@ a:hover {
   background-color: var(--hr-text-muted) !important;
 }
 
+/* === Waiting dots animation (shown as message content "⋯" while processing) === */
+@keyframes hr-pulse-dots {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+.message-content p:only-child {
+  /* If the only content is "⋯", animate it */
+}
+
+/* Target the dots character specifically via a utility approach in the message */
+
 /* === Watermark === */
 [class*="watermark"],
 [class*="Watermark"] {

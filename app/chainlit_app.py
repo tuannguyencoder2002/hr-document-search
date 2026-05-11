@@ -318,18 +318,18 @@ async def _run_image_search(query_image: Path, text_query: str) -> None:
     # Wait for base warmup (ensures GPU is ready, avoids first-query jank).
     if not _warmup_done.is_set():
         warming = cl.Message(
-            content="⏳ Đang nạp model vào GPU (lần đầu)…",
-            author="HR Assistant",
+        
+            author="Document Search Assistant",
         )
         await warming.send()
         await _warmup_models_once()
-        warming.content = "✅ Model đã sẵn sàng."
+    
         await warming.update()
 
-    header = "### 🖼 Tìm ảnh tương tự trong tài liệu"
+    header = "Search Images"
     if text_query:
         header += f"\n_Truy vấn kết hợp: `{text_query}`_"
-    answer_msg = cl.Message(content=header, author="HR Assistant")
+    answer_msg = cl.Message(content=header, author="Document Search Assistant")
     await answer_msg.send()
 
     async with cl.Step(name="🖼 CLIP image search", type="retrieval") as step:
@@ -424,7 +424,7 @@ async def on_message(message: cl.Message) -> None:
         if ingest_lines:
             await cl.Message(
                 content="### Kết quả index\n\n" + "\n\n".join(ingest_lines),
-                author="HR Assistant",
+                author="Document Search Assistant",
             ).send()
 
     # --- Image search: reverse-image or text+image multimodal query ---
@@ -436,7 +436,7 @@ async def on_message(message: cl.Message) -> None:
         if not message.elements:
             await cl.Message(
                 content="Vui lòng nhập câu hỏi, đính kèm file tài liệu để index, hoặc gửi ảnh để tìm hình tương tự.",
-                author="HR Assistant",
+                author="Document Search Assistant",
             ).send()
         return
 
@@ -444,7 +444,7 @@ async def on_message(message: cl.Message) -> None:
     intent = detect_intent(question)
     if intent != Intent.RAG:
         logger.info("[%s] intent=%s -> skip RAG", request_id, intent.value)
-        await cl.Message(content=RESPONSES[intent], author="HR Assistant").send()
+        await cl.Message(content=RESPONSES[intent], author="Document Search Assistant").send()
         return
     logger.info("[%s] intent=rag -> full pipeline", request_id)
 
@@ -455,7 +455,7 @@ async def on_message(message: cl.Message) -> None:
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
-    answer_msg = cl.Message(content="", author="HR Assistant")
+    answer_msg = cl.Message(content="⋯", author="Document Search Assistant")
     await answer_msg.send()
     cl.user_session.set("last_answer_msg", answer_msg)
 

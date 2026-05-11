@@ -1,4 +1,4 @@
-# 👋 Trợ lý Nhân sự
+# 👋 Document Search Assistant
 
 Hệ thống hỏi đáp tài liệu HR nội bộ, chạy **100% local**. Mọi câu trả lời đều kèm **nguồn tham khảo**, bấm vào link nguồn để xem nguyên văn đoạn tài liệu.
 
