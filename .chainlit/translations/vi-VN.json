@@ -58,7 +58,7 @@
     },
     "chat": {
         "input": {
-            "placeholder": "Nhập câu hỏi về chính sách, quy trình, quy định...",
+            "placeholder": "",
             "actions": {
                 "send": "Gửi",
                 "stop": "Dừng",

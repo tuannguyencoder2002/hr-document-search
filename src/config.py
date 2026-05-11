@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Ollama
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:8b"
+    ollama_keep_alive: str = "30m"  # keep model resident in VRAM between requests
+    ollama_num_gpu: int = -1        # -1 = offload all layers to GPU
 
     # Models
     embedding_model: str = "BAAI/bge-m3"
@@ -54,7 +56,7 @@ class Settings(BaseSettings):
     # LLM generation
     llm_temperature: float = 0.2
     llm_top_p: float = 0.9
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 512
 
     # Data
     data_dir: Path = Field(default=PROJECT_ROOT / "data" / "corpus")

@@ -34,6 +34,7 @@ from src.search.image_retriever import ImageRetriever
 from src.search.reranker import CrossEncoderReranker
 from src.search.retriever import HybridRetriever
 from src.utils.logger import get_logger, setup_logging
+from src.utils.ollama_health import log_model_status
 
 setup_logging()
 logger = get_logger(__name__)
@@ -131,17 +132,44 @@ async def _run_blocking(fn, *args, **kwargs):
 
 
 def _warm_models_blocking() -> None:
-    """Load embedder + reranker + ping Ollama. Runs in a worker thread."""
+    """Load embedder + reranker + keep LLM resident. Runs in a worker thread."""
+    import time as _time
+
+    # Embedder
     try:
+        t0 = _time.perf_counter()
         emb = _ensure_embedder()
         emb.encode("khoi dong")
+        logger.info("[warmup] embedder ready in %.2fs", _time.perf_counter() - t0)
     except Exception as e:
-        logger.warning("Embedder warmup failed: %s", e)
+        logger.warning("[warmup] embedder FAILED: %s", e)
+
+    # Reranker
     try:
-        retriever, reranker, llm = _get_components()
+        t0 = _time.perf_counter()
+        _, reranker, _ = _get_components()
         reranker.rerank("khoi dong", [{"text": "warm up"}], top_k=1)
+        logger.info("[warmup] reranker ready in %.2fs", _time.perf_counter() - t0)
     except Exception as e:
-        logger.warning("Reranker warmup failed: %s", e)
+        logger.warning("[warmup] reranker FAILED: %s", e)
+
+    # LLM
+    try:
+        t0 = _time.perf_counter()
+        _, _, llm = _get_components()
+        logger.info("[warmup] LLM model=%s keep_alive=%s num_gpu=%s",
+                    llm.model, llm.keep_alive, llm.num_gpu)
+        out = llm.generate("Xin chao", [{"text": "warm up", "metadata": {}}])
+        logger.info("[warmup] LLM ready in %.2fs (sample=%r)",
+                    _time.perf_counter() - t0, out[:60])
+    except Exception as e:
+        logger.warning("[warmup] LLM FAILED: %s", e)
+
+    # Report GPU offload status to confirm Ollama actually put the model on GPU
+    try:
+        log_model_status()
+    except Exception as e:
+        logger.warning("[warmup] ollama status check failed: %s", e)
 
 
 async def _warmup_models_once() -> None:
@@ -383,6 +411,9 @@ async def on_chat_start() -> None:
 @cl.on_message
 async def on_message(message: cl.Message) -> None:
     question = (message.content or "").strip()
+    request_id = f"req_{int(time.time() * 1000)}"
+    logger.info("[%s] --- new message: %r (elements=%d)",
+                request_id, question[:120], len(message.elements or []))
 
     # --- Separate docs-to-ingest from images-to-search ---
     ingest_lines: list[str] = []
@@ -411,8 +442,10 @@ async def on_message(message: cl.Message) -> None:
     # --- Intent shortcut: greetings / thanks / small talk bypass RAG ---
     intent = detect_intent(question)
     if intent != Intent.RAG:
+        logger.info("[%s] intent=%s -> skip RAG", request_id, intent.value)
         await cl.Message(content=RESPONSES[intent], author="HR Assistant").send()
         return
+    logger.info("[%s] intent=rag -> full pipeline", request_id)
 
     # --- Wait for model warmup if still loading (first query only) ---
     if not _warmup_done.is_set():
@@ -441,8 +474,16 @@ async def on_message(message: cl.Message) -> None:
         )
         stage_timings["search_ms"] = int((time.perf_counter() - t0) * 1000)
         step.output = f"Lấy {len(retrieved)} chunks ứng viên trong {stage_timings['search_ms']} ms"
+        logger.info("[%s] search: %d chunks in %d ms",
+                    request_id, len(retrieved), stage_timings["search_ms"])
+        for i, r in enumerate(retrieved[:5], 1):
+            meta = r.get("metadata", {}) or {}
+            logger.info("[%s]   retr#%d score=%.3f %s p=%s",
+                        request_id, i, r.get("score", 0.0),
+                        meta.get("source", "?"), meta.get("page", "?"))
 
     if not retrieved:
+        logger.info("[%s] no retrieval hits -> fallback message", request_id)
         answer_msg.content = (
             "Tài liệu hiện tại không có thông tin về vấn đề này. "
             "Vui lòng thử đính kèm thêm tài liệu liên quan hoặc đổi cách đặt câu hỏi."
@@ -461,15 +502,60 @@ async def on_message(message: cl.Message) -> None:
             f"Chọn top-{len(reranked)} trong {stage_timings['rerank_ms']} ms · "
             f"best score = {reranked[0]['rerank_score']:.3f}"
         )
+        logger.info("[%s] rerank: top-%d in %d ms, best=%.3f",
+                    request_id, len(reranked), stage_timings["rerank_ms"],
+                    reranked[0]["rerank_score"])
+        for i, r in enumerate(reranked, 1):
+            meta = r.get("metadata", {}) or {}
+            logger.info("[%s]   rerank#%d score=%.3f %s p=%s",
+                        request_id, i, r.get("rerank_score", 0.0),
+                        meta.get("source", "?"), meta.get("page", "?"))
 
-    # --- Generate ---
+    # --- Generate (streaming) ---
+    # Start streaming into the answer message as soon as tokens arrive.
+    # This avoids the "blank screen for 60s" feel even on slow hardware.
+    answer_msg.content = ""
+    answer_parts: list[str] = []
+    token_count = 0
     async with cl.Step(name="🧠 Qwen3-8B generate", type="llm") as step:
         prompt = build_prompt(question, reranked)
         step.input = prompt[:1500] + ("..." if len(prompt) > 1500 else "")
+        logger.info("[%s] generate: prompt_chars=%d context_chunks=%d",
+                    request_id, len(prompt), len(reranked))
         t0 = time.perf_counter()
-        answer = await _run_blocking(llm.generate, question, reranked)
+        first_token_ms: int | None = None
+        async for delta in llm.stream(question, reranked):
+            if first_token_ms is None:
+                first_token_ms = int((time.perf_counter() - t0) * 1000)
+                logger.info("[%s] generate: first token after %d ms",
+                            request_id, first_token_ms)
+            answer_parts.append(delta)
+            token_count += 1
+            await answer_msg.stream_token(delta)
         stage_timings["generate_ms"] = int((time.perf_counter() - t0) * 1000)
-        step.output = f"{len(answer)} ký tự trong {stage_timings['generate_ms']} ms"
+        total_chars = sum(len(p) for p in answer_parts)
+        tok_per_sec = (
+            token_count / (stage_timings["generate_ms"] / 1000.0)
+            if stage_timings["generate_ms"] > 0 else 0.0
+        )
+        step.output = (
+            f"{total_chars} ký tự / ~{token_count} token "
+            f"trong {stage_timings['generate_ms']} ms ({tok_per_sec:.1f} tok/s)"
+        )
+        logger.info(
+            "[%s] generate: %d chars, ~%d tok in %d ms (%.1f tok/s, first_token=%s ms)",
+            request_id, total_chars, token_count, stage_timings["generate_ms"],
+            tok_per_sec, first_token_ms,
+        )
+        # Warn if speed is suspicious of CPU inference.
+        if tok_per_sec and tok_per_sec < 10:
+            logger.warning(
+                "[%s] generation speed %.1f tok/s is suspiciously low — "
+                "model may be running on CPU. Run `ollama ps` or check "
+                "OLLAMA_NUM_GPU=-1.",
+                request_id, tok_per_sec,
+            )
+    answer = "".join(answer_parts).strip()
 
     # --- Source elements (PDF viewer when possible, Text fallback otherwise) ---
     source_elements: list[Any] = []
@@ -493,3 +579,7 @@ async def on_message(message: cl.Message) -> None:
     answer_msg.content = answer + footer
     answer_msg.elements = source_elements
     await answer_msg.update()
+    logger.info("[%s] --- done total=%d ms (search=%d, rerank=%d, generate=%d)",
+                request_id, total_ms,
+                stage_timings["search_ms"], stage_timings["rerank_ms"],
+                stage_timings["generate_ms"])
