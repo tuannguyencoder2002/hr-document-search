@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     # Device
     device: str = "auto"  # "auto" | "cuda" | "cpu"
 
+    # Image search (CLIP)
+    image_search_enabled: bool = True
+    clip_text_model: str = "sentence-transformers/clip-ViT-B-32-multilingual-v1"
+    clip_image_model: str = "sentence-transformers/clip-ViT-B-32"
+    clip_vector_size: int = 512
+    image_collection: str = "hr_images"
+    image_store_dir: Path = Field(default=PROJECT_ROOT / "data" / "extracted_images")
+    image_min_width: int = 80   # skip tiny images (icons, bullets)
+    image_min_height: int = 80
+    image_top_k: int = 3
+
     def resolved_device(self) -> str:
         if self.device != "auto":
             return self.device

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import src.hf_offline  # noqa: F401
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

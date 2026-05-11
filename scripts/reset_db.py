@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import src.hf_offline  # noqa: F401
+
 from qdrant_client import QdrantClient
 
 from src.config import get_settings

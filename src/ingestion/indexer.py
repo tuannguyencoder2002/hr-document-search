@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -16,6 +16,9 @@ from src.ingestion.cleaner import clean_text
 from src.ingestion.parser import parse_file
 from src.search.embedder import BGEEmbedder
 from src.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from src.ingestion.manifest import Manifest
 
 logger = get_logger(__name__)
 
@@ -50,6 +53,7 @@ class Indexer:
         client: QdrantClient | None = None,
         embedder: BGEEmbedder | None = None,
         collection: str | None = None,
+        image_indexer: Any = None,
     ) -> None:
         settings = get_settings()
         self.client = client or settings.create_qdrant_client()
@@ -60,6 +64,25 @@ class Indexer:
         self.chunk_size = settings.chunk_size
         self.chunk_overlap = settings.chunk_overlap
         ensure_collection(self.client, self.collection, settings.qdrant_dense_size)
+
+        # Optional image indexer: lazy-initialized unless explicitly passed in.
+        self._image_indexer = image_indexer
+        self._image_search_enabled = settings.image_search_enabled
+
+    def _get_image_indexer(self) -> Any | None:
+        """Lazily build an ImageIndexer the first time we need one."""
+        if not self._image_search_enabled:
+            return None
+        if self._image_indexer is None:
+            try:
+                from src.ingestion.image_indexer import ImageIndexer
+
+                self._image_indexer = ImageIndexer(client=self.client)
+            except Exception as e:
+                logger.warning("Image indexing unavailable, continuing text-only: %s", e)
+                self._image_search_enabled = False
+                return None
+        return self._image_indexer
 
     def _prepare_chunks(self, file_path: str | Path, extra_meta: dict[str, Any] | None) -> list[Chunk]:
         docs = parse_file(file_path)
@@ -124,16 +147,109 @@ class Indexer:
                 "filename": path.name,
                 "pages": 0,
                 "chunks_indexed": 0,
+                "images_indexed": 0,
             }
         n = self._upsert_batch(chunks, document_id=doc_id)
         pages = len({c.metadata.get("page") for c in chunks})
-        logger.info("Indexed %s: %d chunks across %d pages", path.name, n, pages)
+
+        # Index images (best-effort, doesn't fail the text ingest if it errors).
+        images_indexed = 0
+        img_idx = self._get_image_indexer()
+        if img_idx is not None:
+            try:
+                summary = img_idx.ingest_file(
+                    path,
+                    document_id=doc_id,
+                    extra_meta=extra_meta or {},
+                )
+                images_indexed = summary.get("images_indexed", 0)
+            except Exception as e:
+                logger.warning("Image indexing failed for %s: %s", path.name, e)
+
+        logger.info(
+            "Indexed %s: %d chunks across %d pages, %d images",
+            path.name, n, pages, images_indexed,
+        )
         return {
             "document_id": doc_id,
             "filename": path.name,
             "pages": pages,
             "chunks_indexed": n,
+            "images_indexed": images_indexed,
         }
+
+    def ingest_file_incremental(
+        self,
+        file_path: str | Path,
+        manifest: "Manifest",
+        extra_meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ingest with manifest-based deduplication.
+
+        - If manifest has this file at the same sha256 -> skip entirely.
+        - If manifest has this file with a different hash -> delete old chunks,
+          reindex with the same document_id so references stay stable.
+        - Otherwise -> fresh ingest and record in manifest.
+
+        The caller is responsible for calling `manifest.save()` afterwards
+        (e.g. once per batch) to avoid excessive disk writes.
+        """
+        from src.ingestion.manifest import Manifest, sha256_of_file  # local import to avoid cycle
+
+        path = Path(file_path)
+        sha = sha256_of_file(path)
+
+        existing = manifest.get(path)
+        if existing is not None and existing.sha256 == sha:
+            logger.info("Unchanged, skipping: %s", path.name)
+            return {
+                "document_id": existing.document_id,
+                "filename": path.name,
+                "pages": 0,
+                "chunks_indexed": 0,
+                "status": "unchanged",
+            }
+
+        doc_id = existing.document_id if existing is not None else f"doc_{uuid.uuid4().hex[:10]}"
+        if existing is not None:
+            logger.info("Content changed, re-indexing: %s", path.name)
+            try:
+                self.delete_document(doc_id)
+            except Exception as e:
+                logger.warning("Could not delete old chunks for %s: %s", doc_id, e)
+
+        summary = self.ingest_file(path, extra_meta=extra_meta, document_id=doc_id)
+        if summary["chunks_indexed"] > 0:
+            manifest.update(
+                path=path,
+                sha256=sha,
+                document_id=doc_id,
+                chunks_indexed=summary["chunks_indexed"],
+            )
+            summary["status"] = "reindexed" if existing is not None else "indexed"
+        else:
+            summary["status"] = "empty"
+        return summary
+
+    def delete_file(
+        self,
+        file_path: str | Path,
+        manifest: "Manifest",
+    ) -> bool:
+        """Delete a file's chunks from Qdrant and drop it from manifest.
+
+        Returns True if the file was found and removed, False otherwise.
+        """
+        path = Path(file_path)
+        rec = manifest.get(path)
+        if rec is None:
+            return False
+        try:
+            self.delete_document(rec.document_id)
+        except Exception as e:
+            logger.warning("Delete failed for %s: %s", rec.document_id, e)
+        manifest.remove(path)
+        return True
 
     def delete_document(self, document_id: str) -> int:
         """Delete all chunks belonging to a document_id."""
@@ -144,6 +260,13 @@ class Indexer:
             collection_name=self.collection,
             points_selector=qm.FilterSelector(filter=flt),
         )
+        # Also clean up associated images if that indexer is available.
+        img_idx = self._get_image_indexer()
+        if img_idx is not None:
+            try:
+                img_idx.delete_document(document_id)
+            except Exception as e:
+                logger.warning("Image delete failed for %s: %s", document_id, e)
         return 1
 
     def list_documents(self) -> list[dict[str, Any]]:
