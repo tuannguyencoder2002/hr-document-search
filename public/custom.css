@@ -367,3 +367,37 @@ hr {
   color: var(--hr-text) !important;
   box-shadow: var(--hr-shadow-md) !important;
 }
+
+/* === Inline element close button (injected by custom.js) === */
+.hr-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--hr-border);
+  border-radius: 8px;
+  background-color: var(--hr-surface);
+  color: var(--hr-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.12s ease;
+  box-shadow: var(--hr-shadow-sm);
+}
+
+.hr-close-btn:hover {
+  background-color: var(--hr-accent);
+  color: #FFFFFF;
+  border-color: var(--hr-accent);
+  box-shadow: var(--hr-shadow-md);
+}
+
+.hr-hidden {
+  display: none !important;
+}

@@ -566,10 +566,9 @@ async def on_message(message: cl.Message) -> None:
     answer = "".join(answer_parts).strip()
 
     # --- Source elements ---
-    # Only the #1 ranked source is embedded inline (auto-visible PDF preview).
-    # The rest are side-panel text fallbacks so the message doesn't become
-    # 5 giant PDF iframes stacked vertically. Users can still click [2]-[5]
-    # links in the "Nguồn:" footer to open those in the side panel.
+    # All reranked sources rendered inline as PDF previews (auto-visible).
+    # Each has a close button injected by public/custom.js — click ✕ to hide
+    # that specific preview without affecting the others.
     source_elements: list[Any] = []
     source_names: list[str] = []
     for i, chunk in enumerate(reranked, start=1):
@@ -577,14 +576,7 @@ async def on_message(message: cl.Message) -> None:
         display = _format_source_display(meta, float(chunk.get("rerank_score", 0.0)))
         name = f"[{i}] {display}"
         source_names.append(name)
-        if i == 1:
-            # Inline PDF viewer for top hit — rendered directly in the message.
-            source_elements.append(_build_source_element(name, chunk))
-        else:
-            # Others stay as side-panel text for compactness.
-            source_elements.append(
-                cl.Text(name=name, content=chunk.get("text", ""), display="side")
-            )
+        source_elements.append(_build_source_element(name, chunk))
 
     total_ms = sum(stage_timings.values())
     footer = (
