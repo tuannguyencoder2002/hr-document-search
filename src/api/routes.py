@@ -187,9 +187,14 @@ def chat(
     generate_ms = int((time.perf_counter() - t0) * 1000)
 
     sources: list[SourceItem] = []
+    seen_src: set[str] = set()
     for r in reranked:
         meta = r.get("metadata", {}) or {}
         text = r.get("text", "")
+        key = f"{meta.get('source', '')}::{meta.get('page', '')}"
+        if key in seen_src:
+            continue
+        seen_src.add(key)
         sources.append(
             SourceItem(
                 document_id=meta.get("document_id"),
@@ -276,11 +281,17 @@ async def chat_stream(
             else:
                 logger.info("[%s] rerank: 0 results (retrieval empty)", request_id)
 
-            # --- Emit sources event ---
+            # --- Emit sources event (deduplicated by file + page) ---
             sources_payload = []
+            seen_keys: set[str] = set()
             for r in reranked:
                 meta = r.get("metadata", {}) or {}
                 text = r.get("text", "")
+                # Dedup key: same file + same page = same card.
+                key = f"{meta.get('source_path', '')}::{meta.get('page', '')}"
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
                 sources_payload.append(
                     {
                         "document_id": meta.get("document_id"),
