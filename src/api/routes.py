@@ -420,8 +420,12 @@ def serve_file(path: str = Query(..., description="Absolute path of the file to 
     # Use FileResponse but override Content-Disposition so browsers render the
     # file inline instead of triggering a download. FileResponse by default
     # sets `attachment` when a filename is provided — we want `inline`.
+    # RFC 5987: filename* with UTF-8 encoding for non-ASCII filenames.
+    from urllib.parse import quote
+
     response = FileResponse(path=str(target), media_type=media)
-    response.headers["Content-Disposition"] = f'inline; filename="{target.name}"'
+    safe_name = quote(target.name)
+    response.headers["Content-Disposition"] = f"inline; filename*=UTF-8''{safe_name}"
     # Allow embedding in an iframe from any origin (local dev: 3000 → 8000).
     if "X-Frame-Options" in response.headers:
         del response.headers["X-Frame-Options"]
