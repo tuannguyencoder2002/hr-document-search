@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     top_k_retrieve: int = 30
     top_k_rerank: int = 5
     rrf_k: int = 60
+    rerank_min_score: float = 0.55  # below this, consider "not found"
 
     # API
     api_host: str = "0.0.0.0"

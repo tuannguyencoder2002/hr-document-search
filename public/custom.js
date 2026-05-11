@@ -1,81 +1,123 @@
 /**
- * HR Assistant — custom JS for Chainlit.
- *
- * Purpose: Auto-close the side panel (PDF/text viewer) when the user sends
- * a new message. Chainlit doesn't expose a backend API for this, so we
- * observe DOM mutations and close it client-side.
+ * HR Assistant — auto-close side panel on new message.
+ * Chainlit v2 renders the side view as a drawer/panel. We observe for it
+ * and close it when the user submits a new query.
  */
-
 (function () {
   "use strict";
 
-  // Log to console so user can verify via DevTools.
-  console.log("[HR Assistant] custom.js loaded");
+  console.log("[HR Assistant] custom.js loaded v2");
 
-  /**
-   * Close the side panel by clicking its close button (if open).
-   * Chainlit renders a button with data-testid="close-side-view" or an
-   * aria-label containing "close". We try multiple selectors for robustness.
-   */
   function closeSidePanel() {
-    const selectors = [
-      '[data-testid="close-side-view"]',
-      'button[aria-label="Close"]',
-      'button[aria-label="close"]',
-      '.side-view-header button',
-      '[class*="sideView"] button[class*="close"]',
-      '[class*="SideView"] button',
-    ];
-    for (const sel of selectors) {
-      const btn = document.querySelector(sel);
-      if (btn) {
-        console.log("[HR Assistant] closing side panel via:", sel);
-        btn.click();
-        return true;
+    // Strategy 1: find any visible close/back button in the side panel area.
+    const buttons = document.querySelectorAll("button");
+    for (const btn of buttons) {
+      const label = (btn.getAttribute("aria-label") || "").toLowerCase();
+      const text = (btn.textContent || "").trim();
+      // Chainlit side view has a back arrow or close icon button.
+      if (
+        label.includes("close") ||
+        label.includes("back") ||
+        text === "←" ||
+        text === "✕" ||
+        text === "×"
+      ) {
+        // Check if it's inside a side-view-like container.
+        const parent = btn.closest('[class*="side"], [class*="Side"], [class*="drawer"], [class*="Drawer"]');
+        if (parent) {
+          console.log("[HR Assistant] closing side panel via button:", label || text);
+          btn.click();
+          return true;
+        }
       }
     }
-    // Fallback: if there's an open side view container, hide it.
-    const sideView = document.querySelector('[class*="sideView"], [class*="SideView"]');
-    if (sideView && sideView.offsetParent !== null) {
-      console.log("[HR Assistant] hiding side panel via display:none fallback");
-      sideView.style.display = "none";
+
+    // Strategy 2: find the side panel container and click its first button (usually back/close).
+    const panels = document.querySelectorAll(
+      '[class*="sideView"], [class*="SideView"], [class*="side-view"], [class*="elementSideView"]'
+    );
+    for (const panel of panels) {
+      if (panel.offsetParent !== null) {
+        const firstBtn = panel.querySelector("button");
+        if (firstBtn) {
+          console.log("[HR Assistant] closing side panel via first button in panel");
+          firstBtn.click();
+          return true;
+        }
+      }
+    }
+
+    // Strategy 3: brute force — find any open panel with a PDF/text viewer and click backdrop or ESC.
+    const backdrop = document.querySelector('[class*="backdrop"], [class*="Backdrop"]');
+    if (backdrop) {
+      console.log("[HR Assistant] closing via backdrop click");
+      backdrop.click();
       return true;
     }
+
+    // Strategy 4: dispatch Escape key to close any open overlay.
+    const activeEl = document.activeElement || document.body;
+    activeEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    console.log("[HR Assistant] dispatched Escape key");
     return false;
   }
 
-  /**
-   * Observe the chat input form for submit events. When the user sends a
-   * message, close the side panel so the new answer starts fresh.
-   */
-  function observeSubmit() {
-    // Listen for Enter key or click on send button.
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        const textarea = document.querySelector("textarea");
-        if (textarea && textarea.value.trim()) {
-          console.log("[HR Assistant] user submitting message, closing side panel");
-          setTimeout(closeSidePanel, 100);
+  // Observe user message submission.
+  function onUserSubmit() {
+    console.log("[HR Assistant] new message submitted, closing side panel");
+    // Small delay to let Chainlit process the message first.
+    setTimeout(closeSidePanel, 150);
+    setTimeout(closeSidePanel, 500); // retry in case panel re-renders
+  }
+
+  // Listen for Enter (without Shift) in textarea.
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      const textarea = e.target.closest("textarea");
+      if (textarea && textarea.value.trim()) {
+        onUserSubmit();
+      }
+    }
+  }, true);
+
+  // Listen for send button click.
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest('button[type="submit"], [aria-label*="end"], [aria-label*="ửi"]');
+    if (btn) {
+      onUserSubmit();
+    }
+  }, true);
+
+  // Also observe DOM for new user messages appearing (backup).
+  const observer = new MutationObserver(function (mutations) {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType === 1) {
+          // If a new user message bubble appears, close side panel.
+          if (
+            node.matches && (
+              node.matches('[class*="userMessage"]') ||
+              node.matches('[class*="user-message"]') ||
+              node.querySelector && node.querySelector('[class*="userMessage"]')
+            )
+          ) {
+            console.log("[HR Assistant] detected new user message in DOM, closing panel");
+            setTimeout(closeSidePanel, 200);
+          }
         }
       }
-    });
+    }
+  });
 
-    // Also observe clicks on the send button.
-    document.addEventListener("click", function (e) {
-      const target = e.target.closest(
-        'button[type="submit"], [aria-label="Send"], [aria-label="Gửi"]'
-      );
-      if (target) {
-        console.log("[HR Assistant] send button clicked, closing side panel");
-        setTimeout(closeSidePanel, 100);
-      }
-    });
+  // Start observing once the chat container exists.
+  function startObserving() {
+    const chat = document.querySelector('[class*="messages"], [class*="Messages"], main');
+    if (chat) {
+      observer.observe(chat, { childList: true, subtree: true });
+      console.log("[HR Assistant] MutationObserver attached to chat container");
+    } else {
+      setTimeout(startObserving, 1000);
+    }
   }
-
-  // Wait for DOM to be ready.
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", observeSubmit);
-  } else {
-    observeSubmit();
-  }
+  startObserving();
 })();

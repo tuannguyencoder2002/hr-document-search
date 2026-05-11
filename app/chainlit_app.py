@@ -506,6 +506,18 @@ async def on_message(message: cl.Message) -> None:
                         request_id, i, r.get("rerank_score", 0.0),
                         meta.get("source", "?"), meta.get("page", "?"))
 
+    # Filter out low-confidence results to avoid hallucination on irrelevant chunks.
+    min_score = settings.rerank_min_score
+    reranked = [r for r in reranked if r.get("rerank_score", 0.0) >= min_score]
+    if not reranked:
+        logger.info("[%s] all reranked below threshold %.2f -> not found", request_id, min_score)
+        answer_msg.content = (
+            "Không tìm thấy thông tin đủ chính xác trong tài liệu. "
+            "Thử đặt câu hỏi cụ thể hơn hoặc dùng từ khóa khác."
+        )
+        await answer_msg.update()
+        return
+
     # --- Generate (streaming) ---
     # Start streaming into the answer message as soon as tokens arrive.
     # This avoids the "blank screen for 60s" feel even on slow hardware.
