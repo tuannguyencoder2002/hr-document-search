@@ -99,8 +99,12 @@ def _format_source_display(meta: dict[str, Any], rerank_score: float) -> str:
 def _build_source_element(name: str, chunk: dict[str, Any]) -> Any:
     """Return the best Chainlit element for a source chunk.
 
-    PDFs: native viewer positioned on the right page, so users can verify the
-    excerpt in context. Everything else: text element with the chunk content.
+    Uses `display="page"` for PDFs so each source opens in a full-page viewer
+    scoped to the specific message. This avoids the "shared side panel" bug
+    where clicking a PDF link from message #1 overlays content from message
+    #3's PDF — each message has its own isolated page viewer.
+
+    Text fallback for non-PDF sources stays side-panel since it's lightweight.
     """
     meta = chunk.get("metadata", {}) or {}
     source_path = meta.get("source_path")
@@ -116,7 +120,7 @@ def _build_source_element(name: str, chunk: dict[str, Any]) -> Any:
                 pdf_page = 1
             return cl.Pdf(
                 name=name,
-                display="side",
+                display="page",
                 path=str(p),
                 page=max(1, pdf_page),
             )
@@ -305,7 +309,7 @@ def _build_image_result_elements(
                     name=f"{name} · tài liệu gốc",
                     path=str(source_path),
                     page=max(1, pdf_page),
-                    display="side",
+                    display="page",
                 )
             )
     return elements, names
@@ -403,10 +407,6 @@ async def set_starters() -> list[cl.Starter]:
 
 @cl.on_chat_start
 async def on_chat_start() -> None:
-    # Track all previous answer messages so we can wipe their attached elements
-    # (PDF / image viewers) when a new query starts. Keeps chat history intact
-    # while ensuring the side panel is always fresh.
-    cl.user_session.set("prev_answers", [])
     cl.user_session.set("last_answer_msg", None)
     # Kick off model warmup in the background so the first real query is fast.
     asyncio.create_task(_warmup_models_once())
@@ -458,24 +458,8 @@ async def on_message(message: cl.Message) -> None:
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
-    # Clear elements from ALL previous answer messages in this session so the
-    # side panel no longer holds stale PDF references. The messages themselves
-    # stay visible (chat history is preserved), but their attached elements are
-    # wiped — clicking an old source link becomes a no-op, and any currently
-    # open side panel will close because its element no longer exists.
-    prev_answers: list[cl.Message] = cl.user_session.get("prev_answers") or []
-    for old in prev_answers:
-        try:
-            if getattr(old, "elements", None):
-                old.elements = []
-                await old.update()
-        except Exception as e:
-            logger.debug("Could not clear old message elements: %s", e)
-
     answer_msg = cl.Message(content="", author="Document Search Assistant")
     await answer_msg.send()
-    prev_answers.append(answer_msg)
-    cl.user_session.set("prev_answers", prev_answers)
     cl.user_session.set("last_answer_msg", answer_msg)
 
     stage_timings: dict[str, int] = {}
