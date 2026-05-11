@@ -403,8 +403,9 @@ async def set_starters() -> list[cl.Starter]:
 
 @cl.on_chat_start
 async def on_chat_start() -> None:
+    # Store reference to the last answer message so we can clear it on next query.
+    cl.user_session.set("last_answer_msg", None)
     # Kick off model warmup in the background so the first real query is fast.
-    # We don't await it — the user can read the welcome screen while it warms.
     asyncio.create_task(_warmup_models_once())
 
 
@@ -461,8 +462,18 @@ async def on_message(message: cl.Message) -> None:
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
+    # Clear previous answer's side-panel elements so the new query starts fresh.
+    prev_msg = cl.user_session.get("last_answer_msg")
+    if prev_msg is not None:
+        try:
+            prev_msg.elements = []
+            await prev_msg.update()
+        except Exception:
+            pass
+
     answer_msg = cl.Message(content="", author="HR Assistant")
     await answer_msg.send()
+    cl.user_session.set("last_answer_msg", answer_msg)
 
     stage_timings: dict[str, int] = {}
 
