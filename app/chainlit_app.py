@@ -99,12 +99,10 @@ def _format_source_display(meta: dict[str, Any], rerank_score: float) -> str:
 def _build_source_element(name: str, chunk: dict[str, Any]) -> Any:
     """Return the best Chainlit element for a source chunk.
 
-    Uses `display="page"` for PDFs so each source opens in a full-page viewer
-    scoped to the specific message. This avoids the "shared side panel" bug
-    where clicking a PDF link from message #1 overlays content from message
-    #3's PDF — each message has its own isolated page viewer.
-
-    Text fallback for non-PDF sources stays side-panel since it's lightweight.
+    Uses `display="inline"` for PDFs so each source renders embedded in its
+    own message (visible immediately without clicking). Because each message
+    owns its inline elements, there's no shared panel that can stack results
+    from different queries.
     """
     meta = chunk.get("metadata", {}) or {}
     source_path = meta.get("source_path")
@@ -120,14 +118,14 @@ def _build_source_element(name: str, chunk: dict[str, Any]) -> Any:
                 pdf_page = 1
             return cl.Pdf(
                 name=name,
-                display="page",
+                display="inline",
                 path=str(p),
                 page=max(1, pdf_page),
             )
     return cl.Text(
         name=name,
         content=chunk.get("text", ""),
-        display="side",
+        display="inline",
     )
 
 
@@ -309,7 +307,7 @@ def _build_image_result_elements(
                     name=f"{name} · tài liệu gốc",
                     path=str(source_path),
                     page=max(1, pdf_page),
-                    display="page",
+                    display="inline",
                 )
             )
     return elements, names
@@ -567,7 +565,11 @@ async def on_message(message: cl.Message) -> None:
             )
     answer = "".join(answer_parts).strip()
 
-    # --- Source elements (PDF viewer when possible, Text fallback otherwise) ---
+    # --- Source elements ---
+    # Only the #1 ranked source is embedded inline (auto-visible PDF preview).
+    # The rest are side-panel text fallbacks so the message doesn't become
+    # 5 giant PDF iframes stacked vertically. Users can still click [2]-[5]
+    # links in the "Nguồn:" footer to open those in the side panel.
     source_elements: list[Any] = []
     source_names: list[str] = []
     for i, chunk in enumerate(reranked, start=1):
@@ -575,7 +577,14 @@ async def on_message(message: cl.Message) -> None:
         display = _format_source_display(meta, float(chunk.get("rerank_score", 0.0)))
         name = f"[{i}] {display}"
         source_names.append(name)
-        source_elements.append(_build_source_element(name, chunk))
+        if i == 1:
+            # Inline PDF viewer for top hit — rendered directly in the message.
+            source_elements.append(_build_source_element(name, chunk))
+        else:
+            # Others stay as side-panel text for compactness.
+            source_elements.append(
+                cl.Text(name=name, content=chunk.get("text", ""), display="side")
+            )
 
     total_ms = sum(stage_timings.values())
     footer = (

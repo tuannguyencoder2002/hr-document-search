@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 SYSTEM_PROMPT = (
-    "Bạn là trợ lý AI của bộ phận Nhân sự, chuyên trả lời câu hỏi về chính sách, "
-    "quy trình và quy định của công ty dựa trên tài liệu được cung cấp. /no_think"
+    "Bạn là trợ lý AI chuyên tìm kiếm và tóm tắt nội dung từ tài liệu được cung cấp. "
+    "Luôn trả lời ngắn gọn bằng tiếng Việt và trích dẫn nguồn."
 )
 
 RAG_PROMPT = """QUY TẮC:
