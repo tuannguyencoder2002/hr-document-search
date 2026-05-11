@@ -403,7 +403,10 @@ async def set_starters() -> list[cl.Starter]:
 
 @cl.on_chat_start
 async def on_chat_start() -> None:
-    # Store reference to the last answer message so we can clear it on next query.
+    # Track all previous answer messages so we can wipe their attached elements
+    # (PDF / image viewers) when a new query starts. Keeps chat history intact
+    # while ensuring the side panel is always fresh.
+    cl.user_session.set("prev_answers", [])
     cl.user_session.set("last_answer_msg", None)
     # Kick off model warmup in the background so the first real query is fast.
     asyncio.create_task(_warmup_models_once())
@@ -455,8 +458,24 @@ async def on_message(message: cl.Message) -> None:
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
-    answer_msg = cl.Message(content="⋯", author="Document Search Assistant")
+    # Clear elements from ALL previous answer messages in this session so the
+    # side panel no longer holds stale PDF references. The messages themselves
+    # stay visible (chat history is preserved), but their attached elements are
+    # wiped — clicking an old source link becomes a no-op, and any currently
+    # open side panel will close because its element no longer exists.
+    prev_answers: list[cl.Message] = cl.user_session.get("prev_answers") or []
+    for old in prev_answers:
+        try:
+            if getattr(old, "elements", None):
+                old.elements = []
+                await old.update()
+        except Exception as e:
+            logger.debug("Could not clear old message elements: %s", e)
+
+    answer_msg = cl.Message(content="", author="Document Search Assistant")
     await answer_msg.send()
+    prev_answers.append(answer_msg)
+    cl.user_session.set("prev_answers", prev_answers)
     cl.user_session.set("last_answer_msg", answer_msg)
 
     stage_timings: dict[str, int] = {}
