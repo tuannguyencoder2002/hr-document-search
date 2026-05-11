@@ -450,24 +450,16 @@ async def on_message(message: cl.Message) -> None:
 
     # --- Wait for model warmup if still loading (first query only) ---
     if not _warmup_done.is_set():
-        warming_msg = cl.Message(
-            content="⏳ Đang nạp model vào GPU (lần đầu)… Sẽ nhanh hơn nhiều ở các câu sau.",
-            author="HR Assistant",
-        )
-        await warming_msg.send()
         await _warmup_models_once()
-        warming_msg.content = "✅ Model đã sẵn sàng."
-        await warming_msg.update()
 
     retriever, reranker, llm = _get_components()
     settings = get_settings()
 
-    # Clear previous answer's side-panel elements so the new query starts fresh.
+    # Remove previous answer message entirely so side panel clears.
     prev_msg = cl.user_session.get("last_answer_msg")
     if prev_msg is not None:
         try:
-            prev_msg.elements = []
-            await prev_msg.update()
+            await prev_msg.remove()
         except Exception:
             pass
 

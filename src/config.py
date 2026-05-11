@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:8b"
+    ollama_model: str = "qwen3:4b"
     ollama_keep_alive: str = "30m"  # keep model resident in VRAM between requests
     ollama_num_gpu: int = -1        # -1 = offload all layers to GPU
 
