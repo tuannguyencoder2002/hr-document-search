@@ -422,9 +422,9 @@ def serve_file(path: str = Query(..., description="Absolute path of the file to 
     # sets `attachment` when a filename is provided — we want `inline`.
     response = FileResponse(path=str(target), media_type=media)
     response.headers["Content-Disposition"] = f'inline; filename="{target.name}"'
-    # Allow embedding in an iframe from our Next.js origin.
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    # Prevent aggressive caching so edits to the source reflect quickly.
+    # Allow embedding in an iframe from any origin (local dev: 3000 → 8000).
+    response.headers.pop("X-Frame-Options", None)
+    response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -533,7 +533,8 @@ def preview_file(
         yield html
 
     response = StreamingResponse(gen(), media_type="text/html; charset=utf-8")
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers.pop("X-Frame-Options", None)
+    response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Cache-Control"] = "no-cache"
     return response
 

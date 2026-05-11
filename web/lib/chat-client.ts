@@ -154,7 +154,17 @@ export function pdfUrlFor(sourcePath: string | null | undefined): string | null 
  * Build the right preview URL for a file based on its extension.
  * PDFs go through /file (native browser render). DOCX / TXT / MD go
  * through /preview which converts them to HTML on the fly.
+ *
+ * IMPORTANT: We call the FastAPI backend DIRECTLY (port 8000) instead of
+ * going through Next.js /api/* proxy. The proxy can mangle headers
+ * (Content-Disposition, Content-Type) causing PDFs to download instead
+ * of rendering inline in an iframe.
  */
+const BACKEND_URL =
+  typeof window !== "undefined"
+    ? (window as any).__DS_BACKEND_URL || "http://localhost:8000"
+    : "http://localhost:8000";
+
 export function previewUrlFor(
   sourcePath: string | null | undefined,
   fileType?: string | null,
@@ -164,13 +174,13 @@ export function previewUrlFor(
   const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
   if (cleanExt === "pdf") {
     return {
-      url: `/api/file?path=${encodeURIComponent(sourcePath)}`,
+      url: `${BACKEND_URL}/file?path=${encodeURIComponent(sourcePath)}`,
       kind: "pdf",
     };
   }
   if (["docx", "doc", "txt", "md"].includes(cleanExt)) {
     return {
-      url: `/api/preview?path=${encodeURIComponent(sourcePath)}`,
+      url: `${BACKEND_URL}/preview?path=${encodeURIComponent(sourcePath)}`,
       kind: "html",
     };
   }
