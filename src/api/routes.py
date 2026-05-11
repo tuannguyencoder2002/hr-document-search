@@ -218,22 +218,56 @@ async def chat_stream(
     settings = get_settings()
     filter_dict = _build_filter(req.department_filter, req.doc_type_filter)
     start_total = time.perf_counter()
+    request_id = f"req_{int(start_total * 1000)}"
+    logger.info(
+        "[%s] /chat/stream — question=%r top_k=%d",
+        request_id, (req.question or "")[:120], req.top_k,
+    )
 
     async def event_stream() -> AsyncIterator[str]:
         try:
+            # --- Retrieval ---
             t0 = time.perf_counter()
             retrieved = retriever.search(
                 req.question, limit=settings.top_k_retrieve, filter=filter_dict,
             )
             search_ms = int((time.perf_counter() - t0) * 1000)
+            logger.info(
+                "[%s] search: %d chunks in %d ms",
+                request_id, len(retrieved), search_ms,
+            )
+            for i, r in enumerate(retrieved[:5], 1):
+                meta = r.get("metadata", {}) or {}
+                logger.info(
+                    "[%s]   retr#%d score=%.3f %s p=%s",
+                    request_id, i, r.get("score", 0.0),
+                    meta.get("source", "?"), meta.get("page", "?"),
+                )
 
+            # --- Rerank ---
             t0 = time.perf_counter()
             top_k = min(req.top_k, settings.top_k_rerank)
             reranked = (
                 reranker.rerank(req.question, retrieved, top_k=top_k) if retrieved else []
             )
             rerank_ms = int((time.perf_counter() - t0) * 1000)
+            if reranked:
+                logger.info(
+                    "[%s] rerank: top-%d in %d ms, best=%.3f",
+                    request_id, len(reranked), rerank_ms,
+                    reranked[0]["rerank_score"],
+                )
+                for i, r in enumerate(reranked, 1):
+                    meta = r.get("metadata", {}) or {}
+                    logger.info(
+                        "[%s]   rerank#%d score=%.3f %s p=%s",
+                        request_id, i, r.get("rerank_score", 0.0),
+                        meta.get("source", "?"), meta.get("page", "?"),
+                    )
+            else:
+                logger.info("[%s] rerank: 0 results (retrieval empty)", request_id)
 
+            # --- Emit sources event ---
             sources_payload = []
             for r in reranked:
                 meta = r.get("metadata", {}) or {}
@@ -259,21 +293,63 @@ async def chat_stream(
             ) + "\n\n"
 
             if not reranked:
+                logger.info("[%s] no rerank hits -> fallback message", request_id)
                 yield "data: " + json.dumps(
                     {
                         "type": "delta",
                         "content": "Tài liệu hiện tại không có thông tin về vấn đề này.",
                     }
                 ) + "\n\n"
-                yield "data: " + json.dumps({"type": "done", "latency_ms": int((time.perf_counter() - start_total) * 1000), "stage_ms": {"search": search_ms, "rerank": rerank_ms, "generate": 0}}) + "\n\n"
+                yield "data: " + json.dumps(
+                    {
+                        "type": "done",
+                        "latency_ms": int((time.perf_counter() - start_total) * 1000),
+                        "stage_ms": {"search": search_ms, "rerank": rerank_ms, "generate": 0},
+                    }
+                ) + "\n\n"
                 return
 
+            # --- Generate (streaming) ---
+            logger.info(
+                "[%s] generate: context_chunks=%d, starting LLM stream…",
+                request_id, len(reranked),
+            )
             t0 = time.perf_counter()
+            first_token_ms: int | None = None
+            total_chars = 0
+            token_count = 0
             async for delta in llm.stream(req.question, reranked):
+                if first_token_ms is None:
+                    first_token_ms = int((time.perf_counter() - t0) * 1000)
+                    logger.info(
+                        "[%s] generate: first token after %d ms",
+                        request_id, first_token_ms,
+                    )
+                total_chars += len(delta)
+                token_count += 1
                 yield "data: " + json.dumps({"type": "delta", "content": delta}) + "\n\n"
             generate_ms = int((time.perf_counter() - t0) * 1000)
 
+            tok_per_sec = (
+                token_count / (generate_ms / 1000.0) if generate_ms > 0 else 0.0
+            )
+            logger.info(
+                "[%s] generate: %d chars, ~%d tok in %d ms (%.1f tok/s, first_token=%s ms)",
+                request_id, total_chars, token_count, generate_ms,
+                tok_per_sec, first_token_ms,
+            )
+            if tok_per_sec and tok_per_sec < 10:
+                logger.warning(
+                    "[%s] generation speed %.1f tok/s is low — run `ollama ps` "
+                    "and check OLLAMA_NUM_GPU=99.",
+                    request_id, tok_per_sec,
+                )
+
             total_ms = int((time.perf_counter() - start_total) * 1000)
+            logger.info(
+                "[%s] --- done total=%d ms (search=%d, rerank=%d, generate=%d)",
+                request_id, total_ms, search_ms, rerank_ms, generate_ms,
+            )
             yield "data: " + json.dumps(
                 {
                     "type": "done",
@@ -286,7 +362,7 @@ async def chat_stream(
                 }
             ) + "\n\n"
         except Exception as e:
-            logger.exception("chat_stream error")
+            logger.exception("[%s] chat_stream error", request_id)
             yield "data: " + json.dumps({"type": "error", "message": str(e)}) + "\n\n"
 
     return StreamingResponse(

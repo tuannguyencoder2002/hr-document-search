@@ -23,7 +23,20 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  // One-time startup banner with debug-toggle hint.
+  useEffect(() => {
+    console.log(
+      "%c[DS] Document Search Assistant UI",
+      "font-weight:600;color:#0F172A;",
+    );
+    console.log(
+      "%c[DS] verbose logs: localStorage.setItem('ds.debug','1')  |  disable: '0'",
+      "color:#64748B;",
+    );
+  }, []);
+
   const hideSource = useCallback((messageId: string, idx: number) => {
+    console.log("[DS ui] hide source", { messageId, idx });
     setMessages((prev) =>
       prev.map((m) =>
         m.id === messageId
@@ -37,6 +50,7 @@ export default function ChatPage() {
   }, []);
 
   const stop = useCallback(() => {
+    console.log("[DS ui] stop requested");
     abortRef.current?.abort();
     abortRef.current = null;
     setStreaming(false);
@@ -47,6 +61,7 @@ export default function ChatPage() {
 
   const submit = useCallback(async (question: string) => {
     if (streaming) return;
+    console.log("[DS ui] submit", question.slice(0, 120));
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",
