@@ -322,25 +322,35 @@ a:hover {
 }
 
 /* === Loader === */
-/* Chainlit's native loading dots (shown while assistant is thinking).
-   Make them noticeably larger so users see "the system is working". */
+/* Chainlit's native loading dots. Make them MUCH larger. */
 [class*="Loader"] span,
 [class*="loader"] span,
 [class*="Thinking"] span,
 [class*="dot-flashing"],
-[class*="loading"] span {
-  width: 10px !important;
-  height: 10px !important;
+[class*="loading"] span,
+[class*="typing"] span {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
   background-color: var(--hr-accent) !important;
-  animation-duration: 1.1s !important;
+  border-radius: 50% !important;
+  animation-duration: 1.2s !important;
+  animation-timing-function: ease-in-out !important;
+  animation-iteration-count: infinite !important;
+  display: inline-block !important;
 }
 
 [class*="Loader"],
 [class*="loader"],
 [class*="Thinking"],
-[class*="loading"] {
-  gap: 6px !important;
-  padding: 8px 0 !important;
+[class*="loading"],
+[class*="typing"] {
+  gap: 8px !important;
+  padding: 12px 0 !important;
+  min-height: 32px !important;
+  align-items: center !important;
+  display: flex !important;
 }
 
 /* Three-dot bouncing loader (Chainlit default) — force larger + darker */
@@ -363,9 +373,22 @@ a:hover {
   font-size: 0.75rem;
 }
 
-/* === Logo area: hide broken default icon, let our SVG show === */
-.cl-logo {
-  height: 28px !important;
+/* === Logo area: larger and more prominent === */
+.cl-logo,
+header img[alt*="logo"],
+header img[alt*="Logo"],
+header img[src*="logo"] {
+  height: 40px !important;
+  width: auto !important;
+  max-width: 280px !important;
+}
+
+header [class*="title"],
+header h1,
+header h2 {
+  font-size: 1.15rem !important;
+  font-weight: 600 !important;
+  color: var(--hr-text) !important;
 }
 
 /* === Divider === */
@@ -383,34 +406,73 @@ hr {
   box-shadow: var(--hr-shadow-md) !important;
 }
 
+/* === Inline PDF/image elements: centered + fixed height === */
+/* Chainlit inline element cards */
+[class*="inlineElement"],
+[class*="InlineElement"],
+[data-inline-element],
+.inline-element {
+  margin: 16px auto !important;
+  max-width: min(900px, 92%) !important;
+  width: 100% !important;
+  border: 1px solid var(--hr-border) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  background-color: var(--hr-surface) !important;
+  box-shadow: var(--hr-shadow-sm) !important;
+  position: relative !important;
+}
+
+/* PDF iframes inside inline elements */
+[class*="inlineElement"] iframe,
+[class*="InlineElement"] iframe,
+.inline-element iframe,
+iframe[src*="pdf"],
+iframe[title*="pdf"],
+iframe[title*="PDF"] {
+  width: 100% !important;
+  height: 640px !important;
+  border: none !important;
+  display: block !important;
+}
+
+/* Inline image preview centering */
+[class*="inlineElement"] img,
+.inline-element img {
+  display: block !important;
+  margin: 0 auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
+
 /* === Inline element close button (injected by custom.js) === */
 .hr-close-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 10;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--hr-border);
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hr-border-strong);
   border-radius: 8px;
   background-color: var(--hr-surface);
-  color: var(--hr-text-muted);
+  color: var(--hr-text);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   transition: all 0.12s ease;
-  box-shadow: var(--hr-shadow-sm);
+  box-shadow: var(--hr-shadow-md);
 }
 
 .hr-close-btn:hover {
-  background-color: var(--hr-accent);
+  background-color: var(--hr-danger);
   color: #FFFFFF;
-  border-color: var(--hr-accent);
-  box-shadow: var(--hr-shadow-md);
+  border-color: var(--hr-danger);
 }
 
 .hr-hidden {

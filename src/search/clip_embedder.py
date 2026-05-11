@@ -9,6 +9,8 @@ Vectors are L2-normalized so cosine similarity equals dot product in Qdrant.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,29 @@ from src.config import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@contextlib.contextmanager
+def _allow_hf_download():
+    """Temporarily disable HF offline mode so a missing model can be fetched once.
+
+    The project defaults to HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 to avoid
+    unwanted Hub traffic on every boot. CLIP models are loaded on-demand and
+    typically aren't in the cache yet — this context manager relaxes those
+    env vars just for the current load, then restores them.
+    """
+    keys = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    saved = {k: os.environ.get(k) for k in keys}
+    for k in keys:
+        os.environ[k] = "0"
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class CLIPEmbedder:
@@ -38,17 +63,27 @@ class CLIPEmbedder:
         self._text_model = None
         self._image_model = None
 
+    def _load_st(self, name: str) -> Any:
+        """Load a SentenceTransformer, allowing HF download if not cached."""
+        from sentence_transformers import SentenceTransformer
+
+        try:
+            return SentenceTransformer(name, device=self.device)
+        except (OSError, Exception) as e:
+            # Likely offline + not cached. Retry once with HF online.
+            logger.info("CLIP offline load failed (%s), retrying with HF online…", type(e).__name__)
+            with _allow_hf_download():
+                return SentenceTransformer(name, device=self.device)
+
     def _ensure_text(self) -> Any:
         if self._text_model is None:
-            from sentence_transformers import SentenceTransformer
-
             logger.info(
                 "Loading CLIP text model %s on %s (fp16=%s)",
                 self.text_model_name,
                 self.device,
                 self.use_fp16,
             )
-            self._text_model = SentenceTransformer(self.text_model_name, device=self.device)
+            self._text_model = self._load_st(self.text_model_name)
             if self.use_fp16:
                 try:
                     self._text_model = self._text_model.half()
@@ -58,15 +93,13 @@ class CLIPEmbedder:
 
     def _ensure_image(self) -> Any:
         if self._image_model is None:
-            from sentence_transformers import SentenceTransformer
-
             logger.info(
                 "Loading CLIP image model %s on %s (fp16=%s)",
                 self.image_model_name,
                 self.device,
                 self.use_fp16,
             )
-            self._image_model = SentenceTransformer(self.image_model_name, device=self.device)
+            self._image_model = self._load_st(self.image_model_name)
             if self.use_fp16:
                 try:
                     self._image_model = self._image_model.half()
