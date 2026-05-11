@@ -1,7 +1,7 @@
 export function TypingIndicator() {
   return (
     <div
-      className="typing-dots py-2"
+      className="typing-dots py-3"
       role="status"
       aria-label="Đang xử lý"
     >

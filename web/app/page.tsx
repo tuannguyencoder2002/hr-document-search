@@ -59,9 +59,84 @@ export default function ChatPage() {
     );
   }, []);
 
-  const submit = useCallback(async (question: string) => {
+  const submitImageSearch = useCallback(async (text: string, image: File) => {
+    const userMsg: ChatMessage = {
+      id: uid(),
+      role: "user",
+      content: text || "🖼 Tìm ảnh tương tự",
+    };
+    const assistantMsg: ChatMessage = {
+      id: uid(),
+      role: "assistant",
+      content: "",
+      streaming: true,
+    };
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setStreaming(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", image);
+      formData.append("top_k", "5");
+
+      console.log("[DS ui] POST /api/image-search", image.name);
+      const res = await fetch("/api/image-search", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`Image search failed: ${res.status}`);
+      }
+      const data = await res.json();
+      console.log("[DS ui] image-search results:", data.total, "hits in", data.latency_ms, "ms");
+
+      // Convert image-search results to Source format for DocCard rendering.
+      const sources = (data.results || []).map((r: any) => ({
+        document_id: r.id,
+        filename: r.filename || "unknown",
+        source_path: r.source_path,
+        page: r.page,
+        file_type: r.source_path?.endsWith(".pdf") ? "pdf" : "docx",
+        score: r.score,
+        excerpt: r.caption || "",
+      }));
+
+      const content = data.total > 0
+        ? `Tìm thấy **${data.total}** ảnh tương tự trong tài liệu (${data.latency_ms} ms).`
+        : "Không tìm thấy ảnh tương tự trong tài liệu đã index.";
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsg.id
+            ? { ...m, content, sources, streaming: false, latency_ms: data.latency_ms }
+            : m,
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.warn("[DS ui] image-search error:", msg);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsg.id
+            ? { ...m, content: `> **Lỗi:** ${msg}`, streaming: false }
+            : m,
+        ),
+      );
+    } finally {
+      setStreaming(false);
+    }
+  }, []);
+
+  const submit = useCallback(async (question: string, image?: File) => {
     if (streaming) return;
-    console.log("[DS ui] submit", question.slice(0, 120));
+    console.log("[DS ui] submit", question.slice(0, 120), image ? `+image(${image.name})` : "");
+
+    // If an image is attached, route to image-search endpoint instead of text RAG.
+    if (image) {
+      await submitImageSearch(question, image);
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",

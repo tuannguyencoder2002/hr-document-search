@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Bot, User } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
-import { PdfCard } from "./pdf-card";
+import { DocCard } from "./doc-card";
 import { TypingIndicator } from "./typing-indicator";
 import { formatMs, cn } from "@/lib/utils";
 
@@ -24,8 +24,8 @@ export function MessageBubble({ message, onHideSource }: Props) {
         )}
       >
         {!isUser && (
-          <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary">
-            <Bot className="h-5 w-5" strokeWidth={2} />
+          <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-card text-primary shadow-sm">
+            <Bot className="h-6 w-6" strokeWidth={2} />
           </div>
         )}
 
@@ -49,19 +49,19 @@ export function MessageBubble({ message, onHideSource }: Props) {
         </div>
 
         {isUser && (
-          <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <User className="h-5 w-5" strokeWidth={2} />
+          <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+            <User className="h-6 w-6" strokeWidth={2} />
           </div>
         )}
       </div>
 
       {/* Sources rendered inline, centered under the assistant message */}
       {!isUser && message.sources && message.sources.length > 0 && (
-        <div className="ml-12 mt-4 space-y-4">
+        <div className="ml-14 mt-4 space-y-4">
           {message.sources.map((src, i) => {
             if (message.hidden_sources?.[i]) return null;
             return (
-              <PdfCard
+              <DocCard
                 key={`${message.id}-src-${i}`}
                 index={i + 1}
                 source={src}

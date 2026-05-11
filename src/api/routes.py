@@ -29,6 +29,7 @@ from src.generation.llm import OllamaLLM
 from src.generation.prompts import build_prompt
 from src.ingestion.indexer import Indexer
 from src.search.embedder import BGEEmbedder
+from src.search.image_retriever import ImageRetriever
 from src.search.reranker import CrossEncoderReranker
 from src.search.retriever import HybridRetriever
 from src.utils.logger import get_logger
@@ -43,6 +44,7 @@ _reranker: CrossEncoderReranker | None = None
 _retriever: HybridRetriever | None = None
 _indexer: Indexer | None = None
 _llm: OllamaLLM | None = None
+_image_retriever: ImageRetriever | None = None
 
 
 def get_embedder() -> BGEEmbedder:
@@ -78,6 +80,13 @@ def get_llm() -> OllamaLLM:
     if _llm is None:
         _llm = OllamaLLM()
     return _llm
+
+
+def get_image_retriever() -> ImageRetriever:
+    global _image_retriever
+    if _image_retriever is None:
+        _image_retriever = ImageRetriever()
+    return _image_retriever
 
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
@@ -378,11 +387,11 @@ async def chat_stream(
 
 @router.get("/file")
 def serve_file(path: str = Query(..., description="Absolute path of the file to serve")) -> FileResponse:
-    """Serve a PDF or other indexed file by absolute path.
+    """Serve a PDF (or other indexed file) inline so the browser can render it.
 
     Security: only paths inside `data_dir` (or its descendants) are allowed.
-    Frontends use this endpoint to render the original PDF the retrieval
-    points at, directly in the browser.
+    Frontends hit this endpoint from an <iframe src=...> to render the
+    original document the retrieval points at.
     """
     settings = get_settings()
     target = Path(path).resolve()
@@ -398,11 +407,256 @@ def serve_file(path: str = Query(..., description="Absolute path of the file to 
             raise HTTPException(status_code=403, detail="Path outside data directory") from e
     if not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    media = (
-        "application/pdf"
-        if target.suffix.lower() == ".pdf"
-        else "application/octet-stream"
-    )
+
+    ext = target.suffix.lower()
+    media = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".txt": "text/plain; charset=utf-8",
+        ".md": "text/markdown; charset=utf-8",
+    }.get(ext, "application/octet-stream")
+
+    # Use FileResponse but override Content-Disposition so browsers render the
+    # file inline instead of triggering a download. FileResponse by default
+    # sets `attachment` when a filename is provided — we want `inline`.
+    response = FileResponse(path=str(target), media_type=media)
+    response.headers["Content-Disposition"] = f'inline; filename="{target.name}"'
+    # Allow embedding in an iframe from our Next.js origin.
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # Prevent aggressive caching so edits to the source reflect quickly.
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@router.get("/preview")
+def preview_file(
+    path: str = Query(..., description="Absolute path of the file to preview as HTML"),
+) -> StreamingResponse:
+    """Render a DOCX / TXT / MD file as HTML for in-browser preview.
+
+    PDFs should use `/file` directly — the browser renders them natively.
+    Other formats need conversion since browsers can't display them in an
+    iframe. Returns a self-contained HTML page with basic document styling.
+    """
+    settings = get_settings()
+    target = Path(path).resolve()
+    data_dir = Path(settings.data_dir).resolve()
+    try:
+        target.relative_to(data_dir)
+    except ValueError:
+        project_data = Path(settings.data_dir).parent.resolve()
+        try:
+            target.relative_to(project_data)
+        except ValueError as e:
+            raise HTTPException(status_code=403, detail="Path outside data directory") from e
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = target.suffix.lower()
+    body_html: str
+    if ext == ".docx":
+        try:
+            import mammoth
+
+            with target.open("rb") as fp:
+                result = mammoth.convert_to_html(fp)
+                body_html = result.value
+        except ImportError as e:
+            raise HTTPException(
+                status_code=501,
+                detail="mammoth not installed. Add `mammoth>=1.6.0` to requirements.",
+            ) from e
+        except Exception as e:
+            logger.warning("DOCX preview failed for %s: %s", target, e)
+            raise HTTPException(status_code=500, detail=f"DOCX render error: {e}") from e
+    elif ext in {".txt", ".md"}:
+        raw = target.read_text(encoding="utf-8", errors="ignore")
+        from html import escape as _esc
+
+        body_html = f"<pre class='plain'>{_esc(raw)}</pre>"
+    elif ext == ".pdf":
+        # Shouldn't happen — PDFs go through /file. Return a helpful redirect.
+        raise HTTPException(
+            status_code=400, detail="PDFs should be served via /file, not /preview."
+        )
+    else:
+        raise HTTPException(
+            status_code=415, detail=f"Preview not supported for {ext}"
+        )
+
+    html = f"""<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{target.name}</title>
+  <style>
+    :root {{ color-scheme: light; }}
+    html, body {{ margin: 0; padding: 0; background: #FFFFFF; color: #0F172A; }}
+    body {{
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.7;
+      font-size: 15px;
+      padding: 2.5rem clamp(1rem, 4vw, 3rem);
+      max-width: 900px;
+      margin: 0 auto;
+    }}
+    h1, h2, h3, h4 {{ color: #0F172A; font-weight: 600; line-height: 1.25; margin-top: 1.5em; }}
+    h1 {{ font-size: 1.6rem; }}
+    h2 {{ font-size: 1.35rem; }}
+    h3 {{ font-size: 1.15rem; }}
+    p {{ margin: 0.6em 0; }}
+    ul, ol {{ padding-left: 1.5em; }}
+    table {{ border-collapse: collapse; margin: 1em 0; width: 100%; }}
+    table td, table th {{ border: 1px solid #E2E8F0; padding: 6px 10px; text-align: left; }}
+    table th {{ background: #F8FAFC; font-weight: 600; }}
+    img {{ max-width: 100%; height: auto; border-radius: 6px; }}
+    pre.plain {{
+      white-space: pre-wrap;
+      font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+      font-size: 14px;
+      background: #F8FAFC;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid #E2E8F0;
+    }}
+    a {{ color: #0F172A; text-decoration: underline; text-underline-offset: 3px; }}
+  </style>
+</head>
+<body>
+{body_html}
+</body>
+</html>"""
+
+    def gen():
+        yield html
+
+    response = StreamingResponse(gen(), media_type="text/html; charset=utf-8")
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/image-search")
+async def image_search(
+    file: UploadFile = File(...),
+    top_k: int = Form(5),
+    image_retriever: ImageRetriever = Depends(get_image_retriever),
+) -> dict[str, Any]:
+    """Reverse image search: upload an image, get visually similar images
+    that were extracted from indexed documents.
+
+    Returns each hit with:
+      - `image_url`: `/image?path=...` to render the extracted thumbnail
+      - `source_url`: `/file?path=...` to open the original PDF
+      - `page`, `score`, `caption`, etc. for display
+    """
+    filename = file.filename or "upload"
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type: {ext}. Allowed: {sorted(ALLOWED_IMAGE_EXTS)}",
+        )
+
+    req_id = f"img_{int(time.time() * 1000)}"
+    logger.info("[%s] /image-search — filename=%s top_k=%d", req_id, filename, top_k)
+
+    # Write upload to a temp file so CLIP can open it via path.
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        size = 0
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > MAX_IMAGE_BYTES:
+                tmp.close()
+                Path(tmp.name).unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="Image exceeds 10MB limit")
+            tmp.write(chunk)
+        tmp_path = Path(tmp.name)
+
+    t0 = time.perf_counter()
+    try:
+        hits = image_retriever.search_by_image(tmp_path, limit=top_k)
+    except Exception as e:
+        logger.exception("[%s] image search failed", req_id)
+        raise HTTPException(status_code=500, detail=f"Image search failed: {e}") from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    logger.info("[%s] image-search: %d hits in %d ms", req_id, len(hits), elapsed_ms)
+
+    results = []
+    for i, h in enumerate(hits, 1):
+        meta = h.get("metadata", {}) or {}
+        img_path = meta.get("image_path")
+        src_path = meta.get("source_path")
+        caption = (meta.get("caption") or "").strip()
+        if len(caption) > 220:
+            caption = caption[:220] + "…"
+        score = float(h.get("score", 0.0))
+        logger.info(
+            "[%s]   img#%d score=%.3f %s p=%s",
+            req_id, i, score, meta.get("source", "?"), meta.get("page", "?"),
+        )
+        results.append(
+            {
+                "id": h.get("id"),
+                "score": score,
+                "filename": meta.get("source", ""),
+                "page": meta.get("page"),
+                "caption": caption,
+                "width": meta.get("width"),
+                "height": meta.get("height"),
+                "image_url": (
+                    f"/image?path={img_path}" if img_path else None
+                ),
+                "source_url": (
+                    f"/file?path={src_path}" if src_path else None
+                ),
+                "source_path": src_path,
+            }
+        )
+
+    return {
+        "query_filename": filename,
+        "results": results,
+        "total": len(results),
+        "latency_ms": elapsed_ms,
+    }
+
+
+@router.get("/image")
+def serve_image(path: str = Query(..., description="Absolute path to an extracted image")) -> FileResponse:
+    """Serve an extracted image from `image_store_dir` (or its descendants)."""
+    settings = get_settings()
+    target = Path(path).resolve()
+    allowed_root = Path(settings.image_store_dir).resolve()
+    try:
+        target.relative_to(allowed_root)
+    except ValueError as e:
+        # Safety hatch: also allow anything under PROJECT_ROOT/data/.
+        project_data = Path(settings.data_dir).parent.resolve()
+        try:
+            target.relative_to(project_data)
+        except ValueError as inner:
+            raise HTTPException(status_code=403, detail="Path outside image store") from inner
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    ext = target.suffix.lower()
+    media = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".gif": "image/gif",
+    }.get(ext, "application/octet-stream")
     return FileResponse(path=str(target), media_type=media, filename=target.name)
 
 

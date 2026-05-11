@@ -149,3 +149,30 @@ export function pdfUrlFor(sourcePath: string | null | undefined): string | null 
   if (!sourcePath) return null;
   return `/api/file?path=${encodeURIComponent(sourcePath)}`;
 }
+
+/**
+ * Build the right preview URL for a file based on its extension.
+ * PDFs go through /file (native browser render). DOCX / TXT / MD go
+ * through /preview which converts them to HTML on the fly.
+ */
+export function previewUrlFor(
+  sourcePath: string | null | undefined,
+  fileType?: string | null,
+): { url: string; kind: "pdf" | "html" | "none" } {
+  if (!sourcePath) return { url: "", kind: "none" };
+  const ext = (fileType || sourcePath.split(".").pop() || "").toLowerCase();
+  const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
+  if (cleanExt === "pdf") {
+    return {
+      url: `/api/file?path=${encodeURIComponent(sourcePath)}`,
+      kind: "pdf",
+    };
+  }
+  if (["docx", "doc", "txt", "md"].includes(cleanExt)) {
+    return {
+      url: `/api/preview?path=${encodeURIComponent(sourcePath)}`,
+      kind: "html",
+    };
+  }
+  return { url: "", kind: "none" };
+}
