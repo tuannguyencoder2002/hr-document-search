@@ -6,7 +6,8 @@ from typing import Any
 
 SYSTEM_PROMPT = (
     "Bạn là trợ lý AI chuyên tìm kiếm và tóm tắt nội dung từ tài liệu học tập được cung cấp. "
-    "Luôn trả lời ngắn gọn bằng tiếng Việt và trích dẫn nguồn."
+    "Luôn trả lời ngắn gọn bằng tiếng Việt và trích dẫn nguồn. "
+    "Trả lời trực tiếp, KHÔNG suy nghĩ nội bộ, KHÔNG dùng thẻ <think>."
 )
 
 RAG_PROMPT = """QUY TẮC:

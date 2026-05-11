@@ -110,6 +110,8 @@ class OllamaLLM:
 
     def generate(self, question: str, context: str | list[dict[str, Any]]) -> str:
         """Blocking generation. Prefer `stream()` in interactive UIs."""
+        import re
+
         client = self._ensure_client()
         response = client.chat(
             model=self.model,
@@ -117,15 +119,25 @@ class OllamaLLM:
             options=self._options(),
             keep_alive=self.keep_alive,
         )
-        return response["message"]["content"].strip()
+        text = response["message"]["content"].strip()
+        # Strip Qwen3 <think>...</think> blocks.
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        return text
 
     async def stream(
         self,
         question: str,
         context: str | list[dict[str, Any]],
     ) -> AsyncIterator[str]:
-        """Async token stream. Yields text deltas as they are produced."""
+        """Async token stream. Yields text deltas as they are produced.
+
+        Filters out Qwen3's <think>...</think> blocks which are internal
+        chain-of-thought that shouldn't be shown to the user.
+        """
+        import re
+
         client = self._ensure_async_client()
+        in_think = False
         async for part in await client.chat(
             model=self.model,
             messages=self._build_messages(question, context),
@@ -134,5 +146,20 @@ class OllamaLLM:
             stream=True,
         ):
             chunk = self._chat_stream_delta(self._as_stream_part_dict(part))
-            if chunk:
-                yield chunk
+            if not chunk:
+                continue
+            # Filter <think>...</think> blocks (Qwen3 chain-of-thought).
+            if "<think>" in chunk:
+                in_think = True
+                chunk = chunk.split("<think>")[0]
+                if chunk.strip():
+                    yield chunk
+                continue
+            if in_think:
+                if "</think>" in chunk:
+                    in_think = False
+                    chunk = chunk.split("</think>", 1)[1]
+                    if chunk.strip():
+                        yield chunk
+                continue
+            yield chunk
