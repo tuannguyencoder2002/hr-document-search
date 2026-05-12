@@ -1,7 +1,7 @@
-# PIPELINE — HR Document Search
+# PIPELINE — Document Search Assistant
 
-Tài liệu này mô tả **chi tiết lưu đồ xử lý** của hệ thống RAG cho tài liệu nhân sự.
-Tất cả các sơ đồ đều dùng [Mermaid](https://mermaid.js.org/) — GitHub / VS Code preview render trực tiếp.
+Tài liệu mô tả **chi tiết lưu đồ xử lý** của hệ thống RAG tìm kiếm tài liệu.
+Sơ đồ dùng [Mermaid](https://mermaid.js.org/) — GitHub / VS Code preview render trực tiếp.
 
 ---
 
@@ -9,331 +9,323 @@ Tất cả các sơ đồ đều dùng [Mermaid](https://mermaid.js.org/) — Gi
 
 ```mermaid
 flowchart TB
-    User((👤 Nhân viên))
+    User((👤 Người dùng))
 
-    subgraph UI["Chainlit UI :7860"]
-      Chat[💬 Chat]
-      Upload[📤 Drag-drop upload]
-      Cite[🔗 Citation side panel]
+    subgraph UI["Next.js 14 :3000"]
+      Chat[💬 Chat + Streaming]
+      ImgSearch[� Image Search]
+      DocView[� Inline PDF/DOCX Viewer]
     end
 
     subgraph API["FastAPI :8000"]
-      Rupload["POST /upload"]
-      Rchat["POST /chat"]
-      Rsearch["GET /search"]
-      Rdocs["GET /documents"]
-      Rhealth["GET /health"]
+      Stream["POST /chat/stream (SSE)"]
+      ImgAPI["POST /image-search"]
+      FileAPI["GET /file · /preview · /open-file"]
+      Upload["POST /upload"]
+      Search["GET /search"]
+      Health["GET /health"]
     end
 
-    subgraph Services["Local services"]
-      Qdrant[("🧭 Qdrant :6333<br/>Collection: hr_documents<br/>dense(1024)+sparse")]
-      Ollama[("🧠 Ollama :11434<br/>qwen3:8b Q4_K_M")]
+    subgraph Models["In-process Python (GPU)"]
+      BGE[["bge-m3\ndense 1024-d + sparse"]]
+      RR[["bge-reranker-v2-m3\ncross-encoder"]]
+      CLIP[["CLIP ViT-B/32\nimage + text 512-d"]]
     end
 
-    subgraph Models["In-process (Python)"]
-      BGE[["bge-m3<br/>dense + sparse"]]
-      RR[["bge-reranker-v2-m3<br/>cross-encoder"]]
+    subgraph Services["Local Services"]
+      Qdrant[("🧭 Qdrant (embedded)\nhr_documents\nhr_images")]
+      Ollama[("🧠 Ollama\nQwen3-4B · GPU 100%")]
     end
 
     User --> UI
-    UI -->|HTTP JSON| API
-    Rupload --> BGE --> Qdrant
-    Rchat --> BGE --> Qdrant --> RR --> Ollama --> Rchat
-    Rsearch --> BGE --> Qdrant
-    Rhealth --> Qdrant
-    Rhealth --> Ollama
+    UI -->|HTTP / SSE| API
+    Stream --> BGE --> Qdrant
+    Stream --> RR
+    Stream --> Ollama
+    ImgAPI --> CLIP --> Qdrant
+    Upload --> BGE --> Qdrant
+    Upload --> CLIP --> Qdrant
+    FileAPI --> User
 ```
 
 ---
 
-## 2. Luồng Ingestion (POST /upload)
-
-Mục tiêu: biến 1 file tài liệu (PDF/DOCX/TXT) thành nhiều `PointStruct` trong Qdrant.
+## 2. Luồng Ingestion (POST /upload hoặc scripts/ingest_folder.py)
 
 ```mermaid
 flowchart TD
-    A[User upload file<br/>qua UI hoặc POST /upload] --> B{Validate<br/>extension + size ≤ 50MB}
-    B -- "❌ reject" --> Err1[400 / 413]
-    B -- "✅" --> C[Save to tempfile]
-    C --> D[parse_file]
-    D -->|PDF| D1[PyMuPDF<br/>per-page text]
-    D -->|DOCX| D2[python-docx<br/>paragraphs + tables]
-    D -->|TXT| D3[read utf-8]
-    D1 --> E[List ParsedDocument<br/>text + metadata]
-    D2 --> E
-    D3 --> E
-    E --> F[clean_text per doc<br/>NFC + strip ctrl + collapse ws]
-    F --> G[chunk_documents<br/>RecursiveCharacterTextSplitter<br/>chunk_size=512, overlap=128]
-    G --> H[List Chunk<br/>text + metadata<br/>chunk_index, char_count,<br/>source, page, doc_type, department]
-    H --> I[Batch loop batch_size=16]
-    I --> J[embedder.encode_batch]
-    J --> J1[dense 1024-d<br/>L2 normalized]
-    J --> J2[sparse token_id → weight]
-    J1 --> K[Build PointStruct]
-    J2 --> K
-    K --> L[client.upsert<br/>collection=hr_documents]
-    L --> M[Return UploadResponse<br/>document_id, pages,<br/>chunks_indexed, ms]
+    A[User thêm file vào data/corpus/] --> B{Validate\nextension + size ≤ 50MB}
+    B -- "❌" --> Err[400 / 413]
+    B -- "✅" --> C[parse_file]
+
+    C -->|PDF| C1[PyMuPDF\nper-page text + images]
+    C -->|DOCX| C2[python-docx\nparagraphs + tables + images]
+    C -->|TXT/MD| C3[read utf-8]
+
+    C1 --> D[List ParsedDocument]
+    C2 --> D
+    C3 --> D
+
+    D --> E[clean_text\nNFC + strip ctrl + collapse ws]
+    E --> F[chunk_documents\nRecursiveCharacterTextSplitter\nchunk_size=512, overlap=128]
+    F --> G[List Chunk + metadata]
+
+    G --> H[bge-m3 encode_batch]
+    H --> H1[dense 1024-d L2-normalized]
+    H --> H2[sparse token_id → weight]
+    H1 --> I[Qdrant upsert\ncollection: hr_documents]
+    H2 --> I
+
+    C1 --> J[extract_images\nfilter < 80x80px]
+    C2 --> J
+    J --> K[CLIP ViT-B/32 encode_image]
+    K --> L[Qdrant upsert\ncollection: hr_images]
+
+    I --> M[Return summary\ndocument_id, chunks, images]
+    L --> M
 ```
 
-**Ví dụ dữ liệu qua từng bước**:
+### Incremental Ingest (Manifest)
 
-| Bước | Input | Output |
-|------|-------|--------|
-| parse | `so_tay_nhan_vien.pdf` (50 trang) | 50 `ParsedDocument` |
-| clean | 50 doc có lẫn `\x00`, NFD | 50 doc sạch, NFC |
-| chunk | 50 doc × ~2000 chars | ~142 `Chunk` (~512 chars, overlap 128) |
-| embed | 142 chunk | `dense: (142, 1024)` + `sparse: List[dict]` |
-| upsert | 142 point | 1 Qdrant collection +142 points |
+```mermaid
+flowchart LR
+    File[file.pdf] --> Hash[SHA256]
+    Hash --> Check{manifest\nhas same hash?}
+    Check -- yes --> Skip[Skip ✓]
+    Check -- no/new --> Ingest[Full ingest]
+    Ingest --> Update[Update manifest]
+    Check -- hash changed --> Delete[Delete old chunks]
+    Delete --> Ingest
+```
 
 ---
 
-## 3. Luồng Search + Generation (POST /chat)
+## 3. Luồng Search + Generation (POST /chat/stream)
 
 ```mermaid
 flowchart TD
-    Q["Câu hỏi tiếng Việt<br/>ví dụ: 'Nghỉ phép bao nhiêu ngày?'"] --> E1[bge-m3 encode query]
-    E1 --> E1a[q_dense 1024-d]
-    E1 --> E1b[q_sparse]
+    Q["Query: 'Cấu trúc bài thi VSTEP?'"] --> Intent{Intent\ndetection}
+    Intent -- greeting/thanks --> Quick["Trả lời template\n(skip RAG)"]
+    Intent -- rag --> E1
+
+    E1[bge-m3 encode query] --> E1a[q_dense 1024-d]
+    E1[bge-m3 encode query] --> E1b[q_sparse]
 
     E1a --> S[Qdrant query_batch_points]
     E1b --> S
     S --> S1[dense.search top-30]
     S --> S2[sparse.search top-30]
 
-    S1 --> RRF["RRF fusion<br/>score = Σ 1/(k+rank+1)<br/>k=60"]
+    S1 --> RRF["RRF fusion\nscore = Σ 1/(k+rank+1)\nk=60"]
     S2 --> RRF
-    RRF --> R30[Top 30 fused chunks<br/>{id, score, text, metadata}]
+    RRF --> R30[Top 30 fused chunks]
 
-    R30 --> RR[bge-reranker-v2-m3<br/>cross-encoder score pairs]
-    RR --> R5[Top 5 chunks<br/>+ rerank_score]
+    R30 --> RR[bge-reranker-v2-m3\ncross-encoder score]
+    RR --> R5[Top 5 reranked]
 
-    R5 --> P[build_prompt<br/>system + context + question]
-    P --> LLM[Ollama qwen3:8b<br/>temperature=0.2<br/>top_p=0.9]
-    LLM --> ANS[Answer với citation<br/>Sổ tay NV, Trang 12]
+    R5 --> Filter{score ≥ 0.35?}
+    Filter -- all below --> NoInfo["'Không tìm thấy thông tin'"]
+    Filter -- pass --> Dedup[Dedup by file+page]
 
-    ANS --> RESP["ChatResponse<br/>{answer, sources[], latency_ms, stage_ms}"]
+    Dedup --> P[Build RAG prompt\nsystem + context + question]
+    P --> LLM[Ollama Qwen3-4B stream\nnum_gpu=99, num_ctx=4096]
+    LLM --> Think{"<think> filter"}
+    Think --> SSE["SSE stream tokens\n→ Frontend render"]
+
+    Dedup --> Sources["Emit sources event\n→ Frontend DocCards"]
 ```
-
-**Giải thích 2 giai đoạn tìm kiếm**:
-
-```mermaid
-graph LR
-    subgraph Stage1["Giai đoạn 1: Retrieve (fast, bi-encoder)"]
-      direction TB
-      All[(~10K chunks)] -.-> Dense[Dense ANN<br/>O log N]
-      All -.-> Sparse[Sparse BM25-like]
-      Dense --> Fuse[RRF]
-      Sparse --> Fuse
-      Fuse --> Top30[Top 30]
-    end
-
-    subgraph Stage2["Giai đoạn 2: Rerank (slow, cross-encoder)"]
-      direction TB
-      Top30 --> Pairs["30 pairs<br/>(query, chunk)"]
-      Pairs --> CE[Cross-encoder<br/>O n compute]
-      CE --> Top5[Top 5]
-    end
-```
-
-Lý do pipeline **hình phễu**:
-- Stage 1 nhanh nhưng encode query và doc độc lập → chỉ bắt được semantic thô.
-- Stage 2 chậm hơn ~10× nhưng đọc query + chunk đồng thời → bắt được quan hệ tinh tế.
-- Kết hợp lại: cân bằng tốc độ & độ chính xác.
 
 ---
 
-## 4. Cấu trúc dữ liệu trong Qdrant
+## 4. Luồng Image Search (POST /image-search)
+
+```mermaid
+flowchart TD
+    Img[User gửi ảnh vào chat] --> Upload[POST /image-search\nmultipart/form-data]
+    Upload --> Encode[CLIP ViT-B/32\nencode_image → 512-d]
+    Encode --> Search[Qdrant query\ncollection: hr_images\ncosine similarity]
+    Search --> Hits[Top-5 ảnh tương tự]
+    Hits --> Response["JSON response:\nimage_url, source_url,\npage, score, caption"]
+    Response --> UI[Frontend render\nDocCard + PDF viewer\nmở đúng trang]
+```
+
+---
+
+## 5. Cấu trúc dữ liệu trong Qdrant
+
+### Collection: hr_documents
 
 ```mermaid
 erDiagram
-    COLLECTION_HR_DOCUMENTS ||--o{ POINT : contains
     POINT {
         uuid id
         vector dense "1024-d cosine"
-        sparse_vector sparse "token_id to weight"
-        json payload
+        sparse_vector sparse "token_id → weight"
     }
     POINT ||--|| PAYLOAD : has
     PAYLOAD {
-        string text "cleaned chunk text"
-        string document_id "doc_abc123"
+        string text "cleaned chunk"
+        string document_id
         json metadata
     }
     PAYLOAD ||--|| METADATA : has
     METADATA {
-        string source "01_so_tay_nhan_vien.pdf"
-        int page "12"
-        string file_type "pdf"
-        string doc_type "handbook"
-        string department "HR"
+        string source "LTTQ_Huong.pdf"
+        string source_path "data/corpus/.../file.pdf"
+        int page
+        string file_type "pdf|docx|txt"
+        string doc_type
         int chunk_index
         int char_count
     }
 ```
 
-**Ví dụ 1 point**:
+### Collection: hr_images
 
-```json
-{
-  "id": "a1b2c3d4-...",
-  "vector": {
-    "dense": [0.021, -0.113, ..., 0.087],
-    "sparse": { "12345": 0.87, "67890": 0.42 }
-  },
-  "payload": {
-    "text": "Điều 5. Chế độ nghỉ phép. 5.1. Nghỉ phép năm: Nhân viên...",
-    "document_id": "doc_a1b2c3",
-    "metadata": {
-      "source": "01_so_tay_nhan_vien_2024.pdf",
-      "page": 12,
-      "file_type": "pdf",
-      "doc_type": "handbook",
-      "department": "HR",
-      "chunk_index": 3,
-      "char_count": 487
+```mermaid
+erDiagram
+    POINT {
+        uuid id
+        vector image "512-d cosine (CLIP)"
     }
-  }
-}
+    POINT ||--|| PAYLOAD : has
+    PAYLOAD {
+        string document_id
+        json metadata
+    }
+    PAYLOAD ||--|| METADATA : has
+    METADATA {
+        string source "LTTQ_Huong.pdf"
+        string source_path
+        int page
+        int figure_index
+        string caption "page text preview"
+        string image_path "extracted PNG path"
+        int width
+        int height
+    }
 ```
 
 ---
 
-## 5. Sequence diagram — /chat end-to-end
+## 6. Sequence Diagram — /chat/stream end-to-end
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as User (Gradio)
-    participant API as FastAPI /chat
-    participant E as BGEEmbedder
+    participant U as User (Browser)
+    participant FE as Next.js :3000
+    participant API as FastAPI :8000
+    participant E as BGE-M3
     participant Q as Qdrant
     participant R as Reranker
     participant L as Ollama
 
-    U->>API: POST /chat { question, top_k }
+    U->>FE: Nhập câu hỏi + Enter
+    FE->>API: POST /chat/stream {question, top_k}
     API->>E: encode(question)
-    E-->>API: { dense, sparse }
+    E-->>API: {dense, sparse}
     API->>Q: query_batch_points(dense, sparse, limit=30)
     Q-->>API: dense_hits[], sparse_hits[]
-    API->>API: rrf_fusion → top 30
-    API->>R: rerank(q, top30, top_k=5)
-    R-->>API: top 5 + rerank_score
-    API->>API: build_prompt(question, top5)
-    API->>L: chat(system+user prompt)
-    L-->>API: answer with citations
-    API-->>U: { answer, sources, latency_ms, stage_ms }
+    API->>API: RRF fusion → top 30
+    API->>R: rerank(query, top30, top_k=5)
+    R-->>API: top 5 + scores
+    API->>API: dedup by file+page
+    API-->>FE: SSE: {type:"sources", sources:[...]}
+    FE->>FE: Render DocCards (PDF viewer)
+    API->>L: chat(stream=True, messages=[...])
+    loop Token stream
+        L-->>API: {delta: "token"}
+        API-->>FE: SSE: {type:"delta", content:"token"}
+        FE->>FE: Append to message bubble
+    end
+    API-->>FE: SSE: {type:"done", latency_ms, stage_ms}
+    FE->>FE: Show timing footer
 ```
 
 ---
 
-## 6. Thứ tự module (dependency graph)
+## 7. VRAM Budget (RTX 5060, 8GB)
+
+```
+┌────────────────────────────────────┬──────────┐
+│ Component                          │ VRAM     │
+├────────────────────────────────────┼──────────┤
+│ bge-m3 (always loaded)             │ ~1.2 GB  │
+│ bge-reranker-v2-m3 (lazy load)     │ ~1.2 GB  │
+│ Qwen3-4B Q4_K_M (Ollama, 100%)    │ ~3.5 GB  │
+│ KV cache (4K context)              │ ~0.5 GB  │
+│ CLIP ViT-B/32 (on-demand)          │ ~0.6 GB  │
+│ PyTorch/CUDA overhead              │ ~0.5 GB  │
+├────────────────────────────────────┼──────────┤
+│ Peak (all loaded)                  │ ~7.5 GB  │
+│ Available                          │ 8.0 GB   │
+│ Margin                             │ 0.5 GB   │
+└────────────────────────────────────┴──────────┘
+```
+
+---
+
+## 8. File Serving Flow
 
 ```mermaid
 flowchart LR
-    config[config.py]
-    logger[utils/logger.py]
+    Click["User click source link"] --> FE["Frontend builds URL"]
+    FE --> |PDF| FileAPI["GET :8000/file?path=..."]
+    FE --> |DOCX/TXT| PreviewAPI["GET :8000/preview?path=..."]
+    FileAPI --> Inline["Content-Disposition: inline\nRFC 5987 UTF-8 filename"]
+    PreviewAPI --> HTML["mammoth → styled HTML"]
+    Inline --> Iframe["<iframe> renders PDF"]
+    HTML --> Iframe2["<iframe> renders HTML"]
 
-    parser[ingestion/parser.py]
-    cleaner[ingestion/cleaner.py]
-    chunker[ingestion/chunker.py]
-    indexer[ingestion/indexer.py]
-
-    embedder[search/embedder.py]
-    retriever[search/retriever.py]
-    reranker[search/reranker.py]
-
-    prompts[generation/prompts.py]
-    llm[generation/llm.py]
-
-    schemas[api/schemas.py]
-    routes[api/routes.py]
-    main[api/main.py]
-    ui[ui/app.py]
-
-    config --> embedder
-    config --> retriever
-    config --> reranker
-    config --> llm
-    config --> indexer
-
-    parser --> indexer
-    cleaner --> indexer
-    chunker --> indexer
-    embedder --> indexer
-    embedder --> retriever
-
-    prompts --> llm
-    retriever --> routes
-    reranker --> routes
-    llm --> routes
-    indexer --> routes
-    schemas --> routes
-    routes --> main
-    main -.->|HTTP| ui
+    Click2["User click 📂"] --> OpenAPI["GET :8000/open-file?path=..."]
+    OpenAPI --> OS["os.startfile() → default app"]
 ```
 
 ---
 
-## 7. VRAM timeline (ví dụ 1 request /chat)
+## 9. Frontend Component Tree
 
-```mermaid
-gantt
-    title VRAM allocation during /chat (RTX 5060 8GB)
-    dateFormat X
-    axisFormat %s ms
-
-    section bge-m3
-    Loaded (1.2GB always)   :done, 0, 5000
-
-    section bge-reranker
-    Lazy load (1.2GB)       :active, 100, 500
-    Stay in VRAM            :active, 600, 2000
-    Idle unload optional    :crit, 2600, 2700
-
-    section Qwen3-8B (Ollama)
-    Already loaded (5.5GB)  :done, 0, 5000
-    KV cache (+1GB)         :active, 800, 2000
-
-    section Peak
-    Peak ≈ 7.0 GB           :milestone, 1000, 0
+```
+app/page.tsx (ChatPage)
+├── components/header.tsx         — Logo + subtitle
+├── components/welcome.tsx        — 4 example prompts
+├── components/message-bubble.tsx — User/Assistant messages
+│   ├── components/doc-card.tsx   — PDF/DOCX inline viewer
+│   │   ├── iframe (PDF or HTML preview)
+│   │   ├── Loading spinner
+│   │   └── Buttons: ↗ new tab · 📂 open local · ✕ close
+│   └── components/typing-indicator.tsx — Bouncing dots
+├── components/chat-input.tsx     — Textarea + image attach
+│   ├── Image preview chip
+│   ├── 📷 attach button
+│   └── ↑ send / ■ stop buttons
+└── lib/
+    ├── chat-client.ts            — SSE parser + console logs
+    ├── types.ts                  — ChatMessage, Source, SSEEvent
+    └── utils.ts                  — cn(), formatMs()
 ```
 
 ---
 
-## 8. Error & edge-case handling
-
-```mermaid
-flowchart TD
-    Start[POST /chat question] --> E{question rỗng?}
-    E -- yes --> E400[422 Unprocessable]
-    E -- no --> R[retrieve top-30]
-    R --> R0{len == 0?}
-    R0 -- yes --> FB["Trả template:<br/>'Tài liệu không có thông tin'<br/>(SKIP LLM để tiết kiệm VRAM)"]
-    R0 -- no --> RR[rerank top-5]
-    RR --> RR0{max score < threshold?}
-    RR0 -- yes --> FB
-    RR0 -- no --> G[generate]
-    G --> G0{LLM timeout?}
-    G0 -- yes --> G504[504 Gateway Timeout]
-    G0 -- no --> OK[200 ChatResponse]
-```
-
----
-
-## 9. So sánh latency từng stage (kỳ vọng)
+## 10. Latency Breakdown (kỳ vọng sau GPU fix)
 
 | Stage | Thời gian | Ghi chú |
 |-------|-----------|---------|
-| Embed query | ~40 ms | bge-m3, GPU |
-| Hybrid search | ~100 ms | Qdrant `query_batch_points` |
-| Rerank top-30 → top-5 | ~350 ms | cross-encoder, GPU |
-| LLM generate (~150 tokens) | ~700 ms | Qwen3-8B Q4_K_M trên RTX 5060 |
-| **Tổng** | **~1.2 s** | Mục tiêu NFR-1: < 5s |
+| Embed query | ~50 ms | bge-m3, GPU |
+| Hybrid search | 200-800 ms | Qdrant embedded |
+| Rerank top-30 → top-5 | 150-300 ms | cross-encoder, GPU |
+| LLM generate (~150 tokens) | 3-8 s | Qwen3-4B, 100% GPU |
+| Image search (CLIP) | 30-100 ms | after first load |
+| **Total text query** | **4-10 s** | |
+| **Total image query** | **1-6 s** | |
 
 ---
 
-## 10. Tài liệu liên quan
+## 11. Tài liệu liên quan
 
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) — kế hoạch chi tiết đầy đủ
 - [README.md](README.md) — setup & usage
-- Source code: `src/ingestion`, `src/search`, `src/generation`, `src/api`
+- [PROJECT_PLAN.md](PROJECT_PLAN.md) — kế hoạch gốc
+- [web/README.md](web/README.md) — frontend architecture
+- [report/](report/) — báo cáo Word
+- Source: `src/ingestion`, `src/search`, `src/generation`, `src/api`
